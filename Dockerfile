@@ -19,13 +19,13 @@ vim
 RUN echo "dash dash/sh boolean false" | debconf-set-selections
 RUN DEBIAN_FRONTEND=noninteractive dpkg-reconfigure dash
 
-#WORKDIR /xtc68
-#COPY ./xtc68 ./xtc68/
-#COPY ./c68-support ./c68-support/
-#RUN cd xtc68 &&\
-#cp ../c68-support/INCLUDE_* ../c68-support/LIB_* support/ &&\
-#make &&\
-#bash install.sh
+WORKDIR /xtc68
+RUN git clone https://github.com/stronnag/xtc68 &&\
+git clone https://github.com/xXorAa/c68-support &&\
+cd xtc68 &&\
+cp ../c68-support/INCLUDE_* ../c68-support/LIB_* support/ &&\
+make &&\
+bash install.sh
 
 WORKDIR /bison
 COPY bison-fseterr.patch .
