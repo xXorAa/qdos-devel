@@ -65,6 +65,7 @@ export PATH=/usr/local/qdos-gcc/bin:$PATH &&\
 make install-includes
 
 WORKDIR /gcc
+ARG TARGETARCH
 COPY gcc-core-2.95.3.tar.bz2 .
 COPY gcc-2.95.3-bufixes.patch.bz2 .
 COPY 0001-import-qdos-gcc-patch.patch .
@@ -76,7 +77,8 @@ bzcat ../gcc-2.95.3-bufixes.patch.bz2 | patch -p1 &&\
 patch -p1 < ../0001-import-qdos-gcc-patch.patch &&\
 patch -p1 < ../0002-configure-alter-usr-local-qdos-to-qdos-gcc.patch &&\
 patch -p1 < ../0003-texinfo-a-kludge-for-modern-gcc-and-strcpy-issue.patch &&\
-CFLAGS="-std=gnu89" ./configure --target=qdos &&\
+case $TARGETARCH in 386) HOSTTARGET=i386-linux;; arm) HOSTTARGET=armv7l-unknown-linux-gnu;; esac &&\
+CFLAGS="-std=gnu89" ./configure --target=qdos --host=$HOSTTARGET &&\
 make &&\
 make install
 
