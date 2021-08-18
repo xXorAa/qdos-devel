@@ -11,9 +11,17 @@ be carried out in the container.
 
 ## Building
 
-on an i386 machine
+on an i386 machine if you have an older version of docker
 
     docker build . -t qdos-devel:latest
+
+If you have a docker that support buildx multi platform, you can build
+multiple platforms at once as a cross compile.
+
+    docker buildx build --tag <user>/<label>:<version> --platform linux/386,linux/arm/v7 --push .
+
+Obviously you can fill in your own details above, or remove the --push if you
+don't want to push to docker hub.
 
 ## Using
 
