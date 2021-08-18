@@ -1,0 +1,25 @@
+From a870cfc3a05f3088875b1aab333c77b034513df2 Mon Sep 17 00:00:00 2001
+From: Graeme Gregory <graeme@xora.org.uk>
+Date: Wed, 18 Aug 2021 17:46:16 +0100
+Subject: [PATCH 07/10] scripts/qdos-ar : fix qdos-gcc path
+
+Signed-off-by: Graeme Gregory <graeme@xora.org.uk>
+---
+ scripts/qdos-ar | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/scripts/qdos-ar b/scripts/qdos-ar
+index e31d01e..3f4ee80 100755
+--- a/scripts/qdos-ar
++++ b/scripts/qdos-ar
+@@ -1,6 +1,6 @@
+ #!/bin/sh                                                                       
+ 
+-slb=/usr/local/qdos/bin/slb
++slb=/usr/local/qdos-gcc/bin/slb
+ flags=$1
+ libname=$2
+ 
+-- 
+2.20.1
+

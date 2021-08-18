@@ -1,0 +1,67 @@
+From 52a13c3b95dab14c40ab4a5e1d90a6e024b99753 Mon Sep 17 00:00:00 2001
+From: Graeme Gregory <graeme@xora.org.uk>
+Date: Wed, 18 Aug 2021 17:47:21 +0100
+Subject: [PATCH 09/10] scripts/qdos-utils-install : fix qdos-gcc path
+
+Signed-off-by: Graeme Gregory <graeme@xora.org.uk>
+---
+ scripts/qdos-utils-install | 34 +++++++++++++++++-----------------
+ 1 file changed, 17 insertions(+), 17 deletions(-)
+
+diff --git a/scripts/qdos-utils-install b/scripts/qdos-utils-install
+index 97dc09d..d6408c9 100755
+--- a/scripts/qdos-utils-install
++++ b/scripts/qdos-utils-install
+@@ -1,32 +1,32 @@
+ #!/bin/sh
+ 
+ # First ensure that all directories exist
+-if ! [ -d /usr/local/qdos ] ; then
+-	mkdir /usr/local/qdos
++if ! [ -d /usr/local/qdos-gcc ] ; then
++	mkdir /usr/local/qdos-gcc
+ fi
+-if ! [ -d /usr/local/qdos/bin ] ; then
+-	mkdir /usr/local/qdos/bin
++if ! [ -d /usr/local/qdos-gcc/bin ] ; then
++	mkdir /usr/local/qdos-gcc/bin
+ fi
+-if ! [ -d /usr/local/qdos/lib ] ; then
+-	mkdir /usr/local/qdos/lib
++if ! [ -d /usr/local/qdos-gcc/lib ] ; then
++	mkdir /usr/local/qdos-gcc/lib
+ fi
+-if ! [ -d /usr/local/qdos/include ] ; then
+-	mkdir /usr/local/qdos/include
++if ! [ -d /usr/local/qdos-gcc/include ] ; then
++	mkdir /usr/local/qdos-gcc/include
+ fi
+ 
+ # Copy the utilities
+-cp -f as68/as68 /usr/local/qdos/bin/
+-cp -f ld/ld /usr/local/qdos/bin/
+-cp -f slb/slb /usr/local/qdos/bin/
++cp -f as68/as68 /usr/local/qdos-gcc/bin/
++cp -f ld/ld /usr/local/qdos-gcc/bin/
++cp -f slb/slb /usr/local/qdos-gcc/bin/
+ 
+ # Copy the scripts
+-cp -f scripts/qdos-ar /usr/local/qdos/bin/
+-cp -f scripts/qdos-ranlib /usr/local/qdos/bin/
+-cp -f scripts/as /usr/local/qdos/bin/
++cp -f scripts/qdos-ar /usr/local/qdos-gcc/bin/
++cp -f scripts/qdos-ranlib /usr/local/qdos-gcc/bin/
++cp -f scripts/as /usr/local/qdos-gcc/bin/
+ 
+ # Add soft links to usr/local/bin
+-ln -sf /usr/local/qdos/bin/slb /usr/local/bin/slb
+-ln -sf /usr/local/qdos/bin/qdos-ar /usr/local/bin/qdos-ar
+-ln -sf /usr/local/qdos/bin/qdos-ranlib /usr/local/bin/qdos-ranlib
++# ln -sf /usr/local/qdos/bin/slb /usr/local/bin/slb
++ln -sf /usr/local/qdos-gcc/bin/qdos-ar /usr/local/bin/qdos-ar
++ln -sf /usr/local/qdos-gcc/bin/qdos-ranlib /usr/local/bin/qdos-ranlib
+ 
+ exit 0
+-- 
+2.20.1
+

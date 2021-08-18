@@ -1,0 +1,26 @@
+From a9311a24615d19e33bd5a69fcb70af09bb85eff7 Mon Sep 17 00:00:00 2001
+From: Graeme Gregory <graeme@xora.org.uk>
+Date: Wed, 18 Aug 2021 17:47:45 +0100
+Subject: [PATCH 10/10] slb/slbanal.c : fix incorrect static which upsets
+ modern gcc
+
+Signed-off-by: Graeme Gregory <graeme@xora.org.uk>
+---
+ slb/slbanal.c | 1 -
+ 1 file changed, 1 deletion(-)
+
+diff --git a/slb/slbanal.c b/slb/slbanal.c
+index bf45d4f..468e4cd 100644
+--- a/slb/slbanal.c
++++ b/slb/slbanal.c
+@@ -256,7 +256,6 @@ void    Flush_Data()
+ }
+ 
+ /*====================================================== START_DIRECTIVE */
+-PRIVATE
+ void    Start_Directive ()
+ /*      ~~~~~~~~~~~~~~~
+  *  The start of a directive has been encountered, so write out any
+-- 
+2.20.1
+

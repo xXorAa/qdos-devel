@@ -1,0 +1,68 @@
+From 2d8c71c5ae91644d14aafeff054522c6070a3439 Mon Sep 17 00:00:00 2001
+From: Graeme Gregory <graeme@xora.org.uk>
+Date: Wed, 18 Aug 2021 17:45:47 +0100
+Subject: [PATCH 06/10] scripts/post-gcc-install : fix qdos-gcc path
+
+Signed-off-by: Graeme Gregory <graeme@xora.org.uk>
+---
+ scripts/post-gcc-install | 28 ++++++++++++++--------------
+ 1 file changed, 14 insertions(+), 14 deletions(-)
+
+diff --git a/scripts/post-gcc-install b/scripts/post-gcc-install
+index d12b2b8..18bb823 100755
+--- a/scripts/post-gcc-install
++++ b/scripts/post-gcc-install
+@@ -1,6 +1,6 @@
+ #!/bin/sh
+ 
+-slb=/usr/local/qdos/bin/slb
++slb=/usr/local/qdos-gcc/bin/slb
+ 
+ version=`/usr/local/bin/qdos-gcc --version`
+ cd /usr/local/lib/gcc-lib/qdos/$version/
+@@ -20,11 +20,11 @@ rm -rf libgcc/
+ # Replace the useless m68000/libgcc.a with a soft link
+ ln -sf /usr/local/lib/gcc-lib/qdos/$version/libgcc.a m68000/libgcc.a
+ # Add a link to libgcc.a into the qdos library directory
+-ln -sf /usr/local/lib/gcc-lib/qdos/$version/libgcc.a /usr/local/qdos/lib/libgcc.a
++ln -sf /usr/local/lib/gcc-lib/qdos/$version/libgcc.a /usr/local/qdos-gcc/lib/libgcc.a
+ 
+ # Add soft links to the qdos as and ld script/binary
+-ln -sf /usr/local/qdos/bin/as as
+-ln -sf /usr/local/qdos/bin/ld ld
++ln -sf /usr/local/qdos-gcc/bin/as as
++ln -sf /usr/local/qdos-gcc/bin/ld ld
+ 
+ # Strip all the cumbersome debugging symbols out of the binaries
+ strip -s cc1 collect2 cpp
+@@ -33,17 +33,17 @@ strip -s cc1 collect2 cpp
+ cd /usr/local/bin
+ # Strip all the cumbersome debugging symbols out of the binaries
+ strip -s cpp gcov qdos-gcc qdos-protoize qdos-unprotoize
+-# Move all qdos related binaries to /usr/local/qdos/bin and
++# Move all qdos related binaries to /usr/local/qdos-gcc/bin and
+ # replace them with soft links...
+-mv -f  cpp gcov qdos-gcc qdos-protoize qdos-unprotoize ../qdos/bin/
+-ln -sf ../qdos/bin/cpp qdos-cpp
+-ln -sf ../qdos/bin/gcov qdos-gcov
+-ln -sf ../qdos/bin/qdos-gcc qdos-gcc
+-ln -sf ../qdos/bin/qdos-protoize qdos-protoize
+-ln -sf ../qdos/bin/qdos-unprotoize qdos-unprotoize
+-
+-# Finally, tidy up things in /usr/local/qdos/bin
+-cd /usr/local/qdos/bin
++mv -f  cpp gcov qdos-gcc qdos-protoize qdos-unprotoize ../qdos-gcc/bin/
++ln -sf ../qdos-gcc/bin/cpp qdos-cpp
++ln -sf ../qdos-gcc/bin/gcov qdos-gcov
++ln -sf ../qdos-gcc/bin/qdos-gcc qdos-gcc
++ln -sf ../qdos-gcc/bin/qdos-protoize qdos-protoize
++ln -sf ../qdos-gcc/bin/qdos-unprotoize qdos-unprotoize
++
++# Finally, tidy up things in /usr/local/qdos-gcc/bin
++cd /usr/local/qdos-gcc/bin
+ # Remove useless gcc and make it a link to qdos-gcc, also add cc
+ rm -f gcc
+ ln -sf qdos-gcc gcc
+-- 
+2.20.1
+

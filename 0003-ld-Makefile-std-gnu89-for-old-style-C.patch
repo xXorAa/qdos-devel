@@ -1,0 +1,26 @@
+From 20aaea1d1b170e8f8268d5108e396dce4f402c4a Mon Sep 17 00:00:00 2001
+From: Graeme Gregory <graeme@xora.org.uk>
+Date: Wed, 18 Aug 2021 17:41:09 +0100
+Subject: [PATCH 03/10] ld/Makefile : -std=gnu89 for old style C
+
+Signed-off-by: Graeme Gregory <graeme@xora.org.uk>
+---
+ ld/Makefile | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/ld/Makefile b/ld/Makefile
+index 16b4870..88ff7c7 100644
+--- a/ld/Makefile
++++ b/ld/Makefile
+@@ -2,7 +2,7 @@ VPATH = ../
+ 
+ OBJS = ld.o
+ 
+-CFLAGS = -DXTC68 -O2 -s -pipe
++CFLAGS = -DXTC68 -O2 -s -pipe -std=gnu89
+ 
+ ld: $(OBJS)
+ 	$(CC) $(CFLAGS) -o ld $(OBJS)
+-- 
+2.20.1
+

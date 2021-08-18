@@ -1,0 +1,26 @@
+From 160d08e4d1fb8378455f7a9659764b7f8c67f347 Mon Sep 17 00:00:00 2001
+From: Graeme Gregory <graeme@xora.org.uk>
+Date: Wed, 18 Aug 2021 17:39:31 +0100
+Subject: [PATCH 01/10] slb/Makefile : -std=gnu89 for old style C
+
+Signed-off-by: Graeme Gregory <graeme@xora.org.uk>
+---
+ slb/Makefile | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/slb/Makefile b/slb/Makefile
+index 5a2f34e..0784c75 100644
+--- a/slb/Makefile
++++ b/slb/Makefile
+@@ -7,7 +7,7 @@
+ 
+ #  ... for compiling on MINIX
+ CC = gcc
+-CFLAGS =  -I. -O2 -c
++CFLAGS =  -I. -O2 -c -std=gnu89
+ LDFLAGS = 
+ LIBS = 
+ 
+-- 
+2.20.1
+

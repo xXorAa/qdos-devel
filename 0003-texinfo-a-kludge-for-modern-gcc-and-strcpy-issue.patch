@@ -1,0 +1,38 @@
+From 7382acfcfec146ec62378bd321e5929b6a2cd042 Mon Sep 17 00:00:00 2001
+From: Graeme Gregory <graeme@xora.org.uk>
+Date: Wed, 18 Aug 2021 16:43:32 +0100
+Subject: [PATCH 3/3] texinfo : a kludge for modern gcc and strcpy issue
+
+Signed-off-by: Graeme Gregory <graeme@xora.org.uk>
+---
+ texinfo/makeinfo/makeinfo.c | 7 ++++++-
+ 1 file changed, 6 insertions(+), 1 deletion(-)
+
+diff --git a/texinfo/makeinfo/makeinfo.c b/texinfo/makeinfo/makeinfo.c
+index 3094a65..64b05f6 100644
+--- a/texinfo/makeinfo/makeinfo.c
++++ b/texinfo/makeinfo/makeinfo.c
+@@ -1673,6 +1673,7 @@ void
+ canon_white (string)
+      char *string;
+ {
++  char *temp;
+   int len = strlen (string);
+   int x;
+ 
+@@ -1683,7 +1684,11 @@ canon_white (string)
+     {
+       if (!cr_or_whitespace (string[x]))
+         {
+-          strcpy (string, string + x);
++          /* The destination may _not_ overlap ! -- strcpy (string, string + x); */
++          temp = malloc(len * sizeof(char) + 1);
++          strcpy(temp, string+x);
++          strcpy(string, temp);
++          free(temp);
+           break;
+         }
+     }
+-- 
+2.20.1
+

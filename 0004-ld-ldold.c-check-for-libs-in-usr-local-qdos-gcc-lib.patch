@@ -1,0 +1,26 @@
+From 0924ebece0e42f8ea614940aa11cd0b70c86b5b5 Mon Sep 17 00:00:00 2001
+From: Graeme Gregory <graeme@xora.org.uk>
+Date: Wed, 18 Aug 2021 17:41:34 +0100
+Subject: [PATCH 04/10] ld/ldold.c : check for libs in /usr/local/qdos-gcc/lib
+
+Signed-off-by: Graeme Gregory <graeme@xora.org.uk>
+---
+ ld/ldold.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/ld/ldold.c b/ld/ldold.c
+index 8e5ebe4..25f263d 100644
+--- a/ld/ldold.c
++++ b/ld/ldold.c
+@@ -1691,7 +1691,7 @@ void command_line(int   *xac, char  ***xav, char **paths, char *lib_arr)
+        if(ldd == NULL)
+        {
+ #ifdef __unix__
+-           ldd = strdup("/usr/local/qdos/lib/");
++           ldd = strdup("/usr/local/qdos-gcc/lib/");
+ #else
+            ldd = strdup("c:/qllib/");
+ #endif
+-- 
+2.20.1
+

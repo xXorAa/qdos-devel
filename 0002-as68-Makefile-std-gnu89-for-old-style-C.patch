@@ -1,0 +1,26 @@
+From 85102c7d4bfc17662066b876d42ee83f9441e8c7 Mon Sep 17 00:00:00 2001
+From: Graeme Gregory <graeme@xora.org.uk>
+Date: Wed, 18 Aug 2021 17:40:34 +0100
+Subject: [PATCH 02/10] as68/Makefile : -std=gnu89 for old style C
+
+Signed-off-by: Graeme Gregory <graeme@xora.org.uk>
+---
+ as68/Makefile | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/as68/Makefile b/as68/Makefile
+index 8c4b067..c464b1d 100644
+--- a/as68/Makefile
++++ b/as68/Makefile
+@@ -1,7 +1,7 @@
+ VPATH = ../
+ 
+ GCFLAGS = -O6 -s -pipe
+-CFLAGS =   $(GCFLAGS) -DXTC68 -DLABELDIFF -DUSELINE -DMINIX -DLITTLE_ENDIAN 
++CFLAGS =   $(GCFLAGS) -std=gnu89 -DXTC68 -DLABELDIFF -DUSELINE -DMINIX -DLITTLE_ENDIAN 
+ LDFLAGS = 
+ 
+ OBJS = cbuf.o cpy.o gen.o hdr.o lex.o main.o ops.o \
+-- 
+2.20.1
+

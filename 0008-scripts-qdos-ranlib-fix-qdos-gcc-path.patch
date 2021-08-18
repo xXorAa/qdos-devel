@@ -1,0 +1,25 @@
+From 6490c9ad3b3e2f5fda5e712189752766b05cc0cb Mon Sep 17 00:00:00 2001
+From: Graeme Gregory <graeme@xora.org.uk>
+Date: Wed, 18 Aug 2021 17:46:47 +0100
+Subject: [PATCH 08/10] scripts/qdos-ranlib : fix qdos-gcc path
+
+Signed-off-by: Graeme Gregory <graeme@xora.org.uk>
+---
+ scripts/qdos-ranlib | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/scripts/qdos-ranlib b/scripts/qdos-ranlib
+index 785aa60..c2c88da 100755
+--- a/scripts/qdos-ranlib
++++ b/scripts/qdos-ranlib
+@@ -1,6 +1,6 @@
+ #!/bin/sh                                                                       
+ 
+-slb=/usr/local/qdos/bin/slb
++slb=/usr/local/qdos-gcc/bin/slb
+ bdir=`pwd`
+ libname="$1"
+ 
+-- 
+2.20.1
+

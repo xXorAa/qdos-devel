@@ -1,0 +1,27 @@
+diff --git a/texinfo/makeinfo/makeinfo.c b/texinfo/makeinfo/makeinfo.c
+index 3094a65..ab02977 100644
+--- a/texinfo/makeinfo/makeinfo.c
++++ b/texinfo/makeinfo/makeinfo.c
+@@ -1672,7 +1672,8 @@ self_delimiting (character)
+ void
+ canon_white (string)
+      char *string;
+-{
++{ 
++  char *temp;
+   int len = strlen (string);
+   int x;
+ 
+@@ -1683,7 +1684,11 @@ canon_white (string)
+     {
+       if (!cr_or_whitespace (string[x]))
+         {
+-          strcpy (string, string + x);
++          /* The destination may _not_ overlap ! -- strcpy (string, string + x); */
++		  temp = malloc(len * sizeof(char) + 1);
++          strcpy(temp, string+x);
++          strcpy(string, temp);
++          free(temp);
+           break;
+         }
+     }

@@ -1,0 +1,39 @@
+From 8698b12b1f586222e34ad01d2542bd6eab6ad356 Mon Sep 17 00:00:00 2001
+From: Graeme Gregory <graeme@xora.org.uk>
+Date: Wed, 18 Aug 2021 17:44:39 +0100
+Subject: [PATCH 05/10] scripts/as : fix qdos-gcc path and shift issue
+
+newer bash complains if $# is not >0 in a shift which
+makes noise!
+
+Signed-off-by: Graeme Gregory <graeme@xora.org.uk>
+---
+ scripts/as | 6 ++++--
+ 1 file changed, 4 insertions(+), 2 deletions(-)
+
+diff --git a/scripts/as b/scripts/as
+index d8a2ec2..1056370 100755
+--- a/scripts/as
++++ b/scripts/as
+@@ -1,6 +1,6 @@
+ #!/bin/sh 
+ 
+-as68="/usr/local/qdos/bin/as68"
++as68="/usr/local/qdos-gcc/bin/as68"
+ # you may use a specific cpp version. E.g.:
+ #
+ # version=`qdos-gcc --version`
+@@ -39,7 +39,9 @@ for i in $cmdline ; do
+ 			fi
+ 			;;
+ 	esac
+-	shift 1
++	if [ $# -ge 1 ]; then
++		shift 1
++	fi
+ done
+ 
+ if [ "$src" != "" ] ; then
+-- 
+2.20.1
+

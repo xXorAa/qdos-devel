@@ -1,0 +1,6570 @@
+From ba22dff7f702f207c217f705afc817300ea012f2 Mon Sep 17 00:00:00 2001
+From: Graeme Gregory <graeme@xora.org.uk>
+Date: Wed, 18 Aug 2021 16:39:45 +0100
+Subject: [PATCH 1/3] import qdos-gcc patch
+
+Signed-off-by: Graeme Gregory <graeme@xora.org.uk>
+---
+ README.qdos                      |   53 +
+ config.sub                       |   10 +-
+ gcc/config.h.in                  |  131 +
+ gcc/config/m68k/lb1sf68-as68.asm | 3889 ++++++++++++++++++++++++++++++
+ gcc/config/m68k/m68k.c           |   90 +-
+ gcc/config/m68k/m68k.h           |    5 +-
+ gcc/config/m68k/m68k.md          |   46 +-
+ gcc/config/m68k/qdos.c           |  193 ++
+ gcc/config/m68k/qdos.h           | 1029 ++++++++
+ gcc/config/m68k/t-qdos           |   47 +
+ gcc/config/m68k/xm-qdos.h        |    4 +
+ gcc/configure                    |    7 +
+ gcc/configure.in                 |    7 +
+ gcc/floatlib.c                   |    6 +
+ gcc/libgcc2.c                    |   19 +-
+ gcc/longlong.h                   |    4 +-
+ gcc/optabs.c                     |   67 +-
+ gcc/sys-types.h                  |    5 +-
+ qdos/as                          |   87 +
+ qdos/c68.interoperability        |  194 ++
+ qdos/ld                          |   23 +
+ qdos/qdos-ar                     |   31 +
+ qdos/qdos-ranlib                 |   21 +
+ 23 files changed, 5934 insertions(+), 34 deletions(-)
+ create mode 100644 README.qdos
+ create mode 100644 gcc/config.h.in
+ create mode 100644 gcc/config/m68k/lb1sf68-as68.asm
+ create mode 100644 gcc/config/m68k/qdos.c
+ create mode 100644 gcc/config/m68k/qdos.h
+ create mode 100644 gcc/config/m68k/t-qdos
+ create mode 100644 gcc/config/m68k/xm-qdos.h
+ create mode 100644 qdos/as
+ create mode 100644 qdos/c68.interoperability
+ create mode 100644 qdos/ld
+ create mode 100644 qdos/qdos-ar
+ create mode 100644 qdos/qdos-ranlib
+
+diff --git a/README.qdos b/README.qdos
+new file mode 100644
+index 0000000..491ca56
+--- /dev/null
++++ b/README.qdos
+@@ -0,0 +1,53 @@
++
++
++*CHANGE* libgcc.a will now be built by default, disable it in 
++gcc/config/m68k/t-qdos if it causes too many complications. To 
++build the libs copy the qdos/qdos-{ar,ranlib} scripts somewhere 
++into you path. You will also need a working as68 and slb in 
++/usr/local/qdos-gcc/bin - ask for patches.
++The lib may still need qdos-ranlib after it is built, install it
++by hand into /usr/local/qdos-gcc/lib.
++I had to use -O0 to build the libs with gcc-2.95.1, otherwise
++the compiler segfaulted.
++
++The 'ld' script is a wrapper to workaround the problem that c68-ld
++doesn't accept space(s) between -o and its arg.
++
++Make/Install
++============
++
++use of a build-dir recommended:
++  mkdir ../build-qdos-gcc
++  cd ../build-qdos-gcc
++  ../gcc-source-dir/configure --target=qdos
++  make
++  make install
++
++This will install 'qdos-gcc' in /usr/local/bin/
++
++Next you will need 'as' (as68) and 'ld' built from c68 sources in 
++/usr/local/qdos-gcc/bin,
++QDOS/c68 includes in /usr/local/qdos-gcc/include and /usr/local/qdos-gcc/include/sys,
++c68 libs in /usr/local/qdos-gcc/lib
++A few of the QDOS/c68 libs/includes/Makefiles may have wrongly spelled names 
++(mostly case, sometimes '_/') which can cause rather mysterious build
++failures.
++
++Tools
++=====
++
++see qdos dir
++
++c68 <-> gcc
++===========
++
++some known problems are described in qdos/c68.interoperability
++
++Special Flags
++=============
++
++any option that can trigger 68020 or fpu insn generation will cause output in
++GWass format, 'as' will be called with '-gwass' option.
++
++-mc68lib use c68 calling convetnions for math library
++
+diff --git a/config.sub b/config.sub
+index 567459e..4039163 100755
+--- a/config.sub
++++ b/config.sub
+@@ -91,7 +91,7 @@ case $os in
+ 	-dec* | -mips* | -sequent* | -encore* | -pc532* | -sgi* | -sony* | \
+ 	-att* | -7300* | -3300* | -delta* | -motorola* | -sun[234]* | \
+ 	-unicom* | -ibm* | -next | -hp | -isi* | -apollo | -altos* | \
+-	-convergent* | -ncr* | -news | -32* | -3600* | -3100* | -hitachi* |\
++	-convergent* | -ncr* | -news | -qdos| -32* | -3600* | -3100* | -hitachi* |\
+ 	-c[123]* | -convex* | -sun | -crds | -omron* | -dg | -ultra | -tti* | \
+ 	-harris | -dolphin | -highlevel | -gould | -cbm | -ns | -masscomp | \
+ 	-apple)
+@@ -299,6 +299,10 @@ case $basic_machine in
+ 		basic_machine=m68k-apple
+ 		os=-aux
+ 		;;
++	*qdos*|*QDOS*)
++		basic_machine=m68k-qdos
++		os=-qdos
++		;;
+ 	balance)
+ 		basic_machine=ns32k-sequent
+ 		os=-dynix
+@@ -928,7 +932,7 @@ case $os in
+ 	      | -*vms* | -sco* | -esix* | -isc* | -aix* | -sunos | -sunos[34]*\
+ 	      | -hpux* | -unos* | -osf* | -luna* | -dgux* | -solaris* | -sym* \
+ 	      | -amigaos* | -amigados* | -msdos* | -newsos* | -unicos* | -aof* \
+-	      | -aos* \
++	      | -aos* | -qdos \
+ 	      | -nindy* | -vxsim* | -vxworks* | -ebmon* | -hms* | -mvs* \
+ 	      | -clix* | -riscos* | -uniplus* | -iris* | -rtu* | -xenix* \
+ 	      | -hiux* | -386bsd* | -netbsd* | -openbsd* | -freebsd* | -riscix* \
+@@ -943,7 +947,7 @@ case $os in
+ 	# EGCS LOCAL
+ 	-sim | -es1800* | -hms* | -xray | -os68k* | -none* | -v88r* \
+ 	      | -windows* | -osx | -abug |  -netware* | -os9* | -beos* \
+-	      | -macos* | -mpw* | -magic* | -mon960* | -lnews* )
++	      | -macos* | -mpw* | -magic* | -mon960* | -lnews* | -lqdos* )
+ 		;;
+ 	-mac*)
+ 		os=`echo $os | sed -e 's|mac|macos|'`
+diff --git a/gcc/config.h.in b/gcc/config.h.in
+new file mode 100644
+index 0000000..c6822de
+--- /dev/null
++++ b/gcc/config.h.in
+@@ -0,0 +1,131 @@
++/* config.h.in.  Generated automatically from configure.in by autoheader.  */
++/* Define if you can safely include both <string.h> and <strings.h>.  */
++#undef STRING_WITH_STRINGS
++
++/* Define if printf supports "%p".  */
++#undef HAVE_PRINTF_PTR
++
++/* Define if you want expensive run-time checks. */
++#undef ENABLE_CHECKING
++
++/* Define to 1 if NLS is requested.  */
++#undef ENABLE_NLS
++
++/* Define as 1 if you have catgets and don't want to use GNU gettext.  */
++#undef HAVE_CATGETS
++
++/* Define as 1 if you have gettext and don't want to use GNU gettext.  */
++#undef HAVE_GETTEXT
++
++/* Define if your cpp understands the stringify operator.  */
++#undef HAVE_CPP_STRINGIFY
++
++/* Define if your compiler understands volatile.  */
++#undef HAVE_VOLATILE
++
++/* Define if your assembler supports specifying the maximum number
++   of bytes to skip when using the GAS .p2align command. */
++#undef HAVE_GAS_MAX_SKIP_P2ALIGN
++
++/* Define if your assembler supports .balign and .p2align.  */
++#undef HAVE_GAS_BALIGN_AND_P2ALIGN
++
++/* Define if your assembler supports .subsection and .subsection -1 starts
++   emitting at the beginning of your section */
++#undef HAVE_GAS_SUBSECTION_ORDERING
++
++/* Define if your assembler uses the old HImode fild and fist notation.  */
++#undef HAVE_GAS_FILDS_FISTS
++
++/* Define if you have a working <inttypes.h> header file.  */
++#undef HAVE_INTTYPES_H
++
++/* Define if your locale.h file contains LC_MESSAGES.  */
++#undef HAVE_LC_MESSAGES
++
++/* Define as 1 if you have the stpcpy function.  */
++#undef HAVE_STPCPY
++
++/* Whether malloc must be declared even if <stdlib.h> is included.  */
++#undef NEED_DECLARATION_MALLOC
++
++/* Whether realloc must be declared even if <stdlib.h> is included.  */
++#undef NEED_DECLARATION_REALLOC
++
++/* Whether calloc must be declared even if <stdlib.h> is included.  */
++#undef NEED_DECLARATION_CALLOC
++
++/* Whether free must be declared even if <stdlib.h> is included.  */
++#undef NEED_DECLARATION_FREE
++
++/* Whether bcopy must be declared even if <string.h> is included.  */
++#undef NEED_DECLARATION_BCOPY
++
++/* Whether bcmp must be declared even if <string.h> is included.  */
++#undef NEED_DECLARATION_BCMP
++
++/* Whether bzero must be declared even if <string.h> is included.  */
++#undef NEED_DECLARATION_BZERO
++
++/* Whether index must be declared even if <string.h> is included.  */
++#undef NEED_DECLARATION_INDEX
++
++/* Whether rindex must be declared even if <string.h> is included.  */
++#undef NEED_DECLARATION_RINDEX
++
++/* Whether getenv must be declared even if <stdlib.h> is included.  */
++#undef NEED_DECLARATION_GETENV
++
++/* Whether atol must be declared even if <stdlib.h> is included.  */
++#undef NEED_DECLARATION_ATOL
++
++/* Whether atof must be declared even if <stdlib.h> is included.  */
++#undef NEED_DECLARATION_ATOF
++
++/* Whether sbrk must be declared even if <stdlib.h> is included.  */
++#undef NEED_DECLARATION_SBRK
++
++/* Whether abort must be declared even if <stdlib.h> is included.  */
++#undef NEED_DECLARATION_ABORT
++
++/* Whether strerror must be declared even if <string.h> is included.  */
++#undef NEED_DECLARATION_STRERROR
++
++/* Whether strsignal must be declared even if <string.h> is included.  */
++#undef NEED_DECLARATION_STRSIGNAL
++
++/* Whether strstr must be declared even if <string.h> is included.  */
++#undef NEED_DECLARATION_STRSTR
++
++/* Whether getcwd must be declared even if <unistd.h> is included.  */
++#undef NEED_DECLARATION_GETCWD
++
++/* Whether getwd must be declared even if <unistd.h> is included.  */
++#undef NEED_DECLARATION_GETWD
++
++/* Whether getrlimit must be declared even if <sys/resource.h> is included.  */
++#undef NEED_DECLARATION_GETRLIMIT
++
++/* Whether setrlimit must be declared even if <sys/resource.h> is included.  */
++#undef NEED_DECLARATION_SETRLIMIT
++
++/* Whether putc_unlocked must be declared even if <stdio.h> is included.  */
++#undef NEED_DECLARATION_PUTC_UNLOCKED
++
++/* Whether fputs_unlocked must be declared even if <stdio.h> is included.  */
++#undef NEED_DECLARATION_FPUTS_UNLOCKED
++
++/* Define to enable the use of a default assembler. */
++#undef DEFAULT_ASSEMBLER
++
++/* Define to enable the use of a default linker. */
++#undef DEFAULT_LINKER
++
++/* Define if host mkdir takes a single argument. */
++#undef MKDIR_TAKES_ONE_ARG
++
++/* Define to the name of the distribution.  */
++#undef PACKAGE
++
++/* Define to the version of the distribution.  */
++#undef VERSION
+diff --git a/gcc/config/m68k/lb1sf68-as68.asm b/gcc/config/m68k/lb1sf68-as68.asm
+new file mode 100644
+index 0000000..59b14f4
+--- /dev/null
++++ b/gcc/config/m68k/lb1sf68-as68.asm
+@@ -0,0 +1,3889 @@
++/* libgcc1 routines for 68000 w/o floating-point hardware.
++   Copyright (C) 1994, 1996, 1997, 1998 Free Software Foundation, Inc.
++
++   motorola syntax version 
++	
++This file is part of GNU CC.
++
++GNU CC is free software; you can redistribute it and/or modify it
++under the terms of the GNU General Public License as published by the
++Free Software Foundation; either version 2, or (at your option) any
++later version.
++
++In addition to the permissions in the GNU General Public License, the
++Free Software Foundation gives you unlimited permission to link the
++compiled version of this file with other programs, and to distribute
++those programs without any restriction coming from the use of this
++file.  (The General Public License restrictions do apply in other
++respects; for example, they cover modification of the file, and
++distribution when not linked into another program.)
++
++This file is distributed in the hope that it will be useful, but
++WITHOUT ANY WARRANTY; without even the implied warranty of
++MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++General Public License for more details.
++
++You should have received a copy of the GNU General Public License
++along with this program; see the file COPYING.  If not, write to
++the Free Software Foundation, 59 Temple Place - Suite 330,
++Boston, MA 02111-1307, USA.  */
++
++/* As a special exception, if you link this library with files
++   compiled with GCC to produce an executable, this does not cause
++   the resulting executable to be covered by the GNU General Public License.
++   This exception does not however invalidate any other reasons why
++   the executable file might be covered by the GNU General Public License.  */
++
++/* Use this one for any 680x0; assumes no floating point hardware.
++   The trailing " '" appearing on some lines is for ANSI preprocessors.  Yuk.
++   Some of this code comes from MINIX, via the folks at ericsson.
++   D. V. Henkel-Wallace (gumby@cygnus.com) Fete Bastille, 1992
++*/
++
++/* These are predefined by new versions of GNU cpp.  */
++
++#ifndef __USER_LABEL_PREFIX__
++#define __USER_LABEL_PREFIX__ _
++#endif
++
++#ifndef __REGISTER_PREFIX__
++#define __REGISTER_PREFIX__
++#endif
++
++#ifndef __IMMEDIATE_PREFIX__
++#define __IMMEDIATE_PREFIX__ #
++#endif
++
++/* ANSI concatenation macros.  */
++
++#define CONCAT1(a, b) CONCAT2(a, b)
++#define CONCAT2(a, b) a ## b
++
++/* Use the right prefix for global labels.  */
++
++#define SYM(x) CONCAT1 (__USER_LABEL_PREFIX__, x)
++
++/* Use the right prefix for immediate values.  */
++
++#define IMM(x) CONCAT1 (__IMMEDIATE_PREFIX__, x)
++
++
++
++#ifdef L_floatex
++
++#if 0	
++;| This is an attempt at a decent floating point (single, double and 
++;| extended double) code for the GNU C compiler. It should be easy to
++;| adapt to other compilers (but beware of the local labels!).
++
++;| Starting date: 21 October, 1990
++
++;| It is convenient to introduce the notation (s,e,f) for a floating point
++;| number, where s=sign, e=exponent, f=fraction. We will call a floating
++;| point number fpn to abbreviate, independently of the precision.
++;| Let MAX_EXP be in each case the maximum exponent (255 for floats, 1023 
++;| for doubles and 16383 for long doubles). We then have the following 
++;| different cases:
++;|  1. Normalized fpns have 0 < e < MAX_EXP. They correspond to 
++;|     (-1)^s x 1.f x 2^(e-bias-1).
++;|  2. Denormalized fpns have e=0. They correspond to numbers of the form
++;|     (-1)^s x 0.f x 2^(-bias).
++;|  3. +/-INFINITY have e=MAX_EXP, f=0.
++;|  4. Quiet NaN (Not a Number) have all bits set.
++;|  5. Signaling NaN (Not a Number) have s=0, e=MAX_EXP, f=1.
++
++;|=============================================================================
++;|                                  exceptions
++;|=============================================================================
++
++;| This is the floating point condition code register (_fpCCR):
++;|
++;| struct {
++;|   short _exception_bits;	
++;|   short _trap_enable_bits;	
++;|   short _sticky_bits;
++;|   short _rounding_mode;
++;|   short _format;
++;|   short _last_operation;
++;|   union {
++;|     float sf;
++;|     double df;
++;|   } _operand1;
++;|   union {
++;|     float sf;
++;|     double df;
++;|   } _operand2;
++;| } _fpCCR;
++#endif
++	
++	.data
++	.even
++
++	.globl	SYM (_fpCCR)
++	
++SYM (_fpCCR):
++__exception_bits:
++	.data2	0
++__trap_enable_bits:
++	.data2	0
++__sticky_bits:
++	.data2	0
++__rounding_mode:
++	.data2	ROUND_TO_NEAREST
++__format:
++	.data2	NIL
++__last_operation:
++	.data2	NOOP
++__operand1:
++	.data4	0
++	.data4	0
++__operand2:
++	.data4 	0
++	.data4	0
++
++/*;| Offsets:*/
++EBITS  = __exception_bits - SYM (_fpCCR)
++TRAPE  = __trap_enable_bits - SYM (_fpCCR)
++STICK  = __sticky_bits - SYM (_fpCCR)
++ROUND  = __rounding_mode - SYM (_fpCCR)
++FORMT  = __format - SYM (_fpCCR)
++LASTO  = __last_operation - SYM (_fpCCR)
++OPER1  = __operand1 - SYM (_fpCCR)
++OPER2  = __operand2 - SYM (_fpCCR)
++
++/*;| The following exception types are supported:*/
++INEXACT_RESULT 		= 0x0001
++UNDERFLOW 		= 0x0002
++OVERFLOW 		= 0x0004
++DIVIDE_BY_ZERO 		= 0x0008
++INVALID_OPERATION 	= 0x0010
++
++/*;| The allowed rounding modes are:*/
++UNKNOWN           = -1
++ROUND_TO_NEAREST  = 0 ;| round result to nearest representable value
++ROUND_TO_ZERO     = 1 ;| round result towards zero
++ROUND_TO_PLUS     = 2 ;| round result towards plus infinity
++ROUND_TO_MINUS    = 3 ;| round result towards minus infinity
++
++;| The allowed values of format are:
++NIL          = 0
++SINGLE_FLOAT = 1
++DOUBLE_FLOAT = 2
++LONG_FLOAT   = 3
++
++;| The allowed values for the last operation are:
++NOOP         = 0
++ADD          = 1
++MULTIPLY     = 2
++DIVIDE       = 3
++NEGATE       = 4
++COMPARE      = 5
++EXTENDSFDF   = 6
++TRUNCDFSF    = 7
++
++	
++;|=============================================================================
++;|                           __clear_sticky_bits
++;|=============================================================================
++
++;| The sticky bits are normally not cleared (thus the name), whereas the 
++;| exception type and exception value reflect the last computation. 
++;| This routine is provided to clear them (you can also write to _fpCCR,
++;| since it is globally visible).
++
++	.globl  SYM (__clear_sticky_bit)
++
++	.text
++	.even
++
++;| void __clear_sticky_bits(void);
++SYM (__clear_sticky_bit):		
++	lea	SYM (_fpCCR),a0
++#ifndef __mcf5200__
++	move.w	IMM (0),STICK(a0)
++#else
++	clr.w	STICK(a0)
++#endif
++	rts
++
++;|=============================================================================
++;|                           _exception_handler
++;|=============================================================================
++
++	.globl  _exception_handler
++
++	.text
++	.even
++
++;| This is the common exit point if an exception occurs.
++;| NOTE: it is NOT callable from C!
++;| It expects the exception type in d7, the format (SINGLE_FLOAT,
++;| DOUBLE_FLOAT or LONG_FLOAT) in d6, and the last operation code in d5.
++;| It sets the corresponding exception and sticky bits, and the format. 
++;| Depending on the format if fills the corresponding slots for the 
++;| operands which produced the exception (all this information is provided
++;| so if you write your own exception handlers you have enough information
++;| to deal with the problem).
++;| Then checks to see if the corresponding exception is trap-enabled, 
++;| in which case it pushes the address of _fpCCR and traps through 
++;| trap FPTRAP (15 for the moment).
++
++FPTRAP = 15
++
++_exception_handler:
++	lea	SYM (_fpCCR),a0
++	move.w	d7,EBITS(a0)	;| set __exception_bits
++#ifndef __mcf5200__
++	or.w	d7,STICK(a0)	;| and __sticky_bits
++#else
++	move.w	STICK(a0),d4
++	or.l	d7,d4
++	move.w	d4,STICK(a0)
++#endif
++	move.w	d6,FORMT(a0)	;| and __format
++	move.w	d5,LASTO(a0)	;| and __last_operation
++
++;| Now put the operands in place:
++#ifndef __mcf5200__
++	cmp.w	IMM (SINGLE_FLOAT),d6
++#else
++	cmp.l	IMM (SINGLE_FLOAT),d6
++#endif
++	beq	1f
++	move.l	8(a6),OPER1(a0)
++	move.l	12(a6),OPER1+4(a0)
++	move.l	16(a6),OPER2(a0)
++	move.l	20(a6),OPER2+4(a0)
++	bra	2f
++1:	move.l	8(a6),OPER1(a0)
++	move.l	12(a6),OPER2(a0)
++2:
++;| And check whether the exception is trap-enabled:
++#ifndef __mcf5200__
++	and.w	TRAPE(a0),d7	;| is exception trap-enabled?
++#else
++	clr.l	d6
++	move.w	TRAPE(a0),d6
++	and.l	d6,d7
++#endif
++	beq	1f		;| no, exit
++	pea	SYM (_fpCCR)	;| yes, push address of _fpCCR
++	trap	IMM (FPTRAP)	;| and trap
++#ifndef __mcf5200__
++1:	movem.l	(sp)+,d2-d7	;| restore data registers
++#else
++1:	movem.l	(sp),d2-d7
++	;| XXX if frame pointer is ever removed, stack pointer must
++	;| be adjusted here.
++#endif
++	unlk	a6		;| and return
++	rts
++#endif /* L_floatex */
++
++#ifdef  L_mulsi3
++	.text
++/*	.proc*/
++	.globl	SYM (__mulsi3)
++SYM (__mulsi3):
++	move.w	4(sp),d0	/* x0 -> d0 */
++	mulu.w	10(sp),d0	/* x0*y1 */
++	move.w	6(sp),d1	/* x1 -> d1 */
++	mulu.w	8(sp),d1	/* x1*y0 */
++#ifndef __mcf5200__
++	add.w	d1,d0
++#else
++	add.l	d1,d0
++#endif
++	swap	d0
++	clr.w	d0
++	move.w	6(sp),d1	/* x1 -> d1 */
++	mulu.w	10(sp),d1	/* x1*y1 */
++	add.l	d1,d0
++
++	rts
++#endif /* L_mulsi3 */
++
++#ifdef  L_udivsi3
++	.text
++	/*.proc*/
++	.globl	SYM (__udivsi3)
++SYM (__udivsi3):
++#ifndef __mcf5200__
++	move.l	d2,-(sp)
++	move.l	12(sp),d1	/* d1 = divisor */
++	move.l	8(sp),d0	/* d0 = dividend */
++
++	cmp.l	IMM (0x10000),d1 /* divisor >= 2 ^ 16 ?   */
++	bcc	L3		/* then try next algorithm */
++	move.l	d0,d2
++	clr.w	d2
++	swap	d2
++	divu	d1,d2          /* high quotient in lower word */
++	move.w	d2,d0		/* save high quotient */
++	swap	d0
++	move.w	10(sp),d2	/* get low dividend + high rest */
++	divu	d1,d2		/* low quotient */
++	move.w	d2,d0
++	bra	L6
++
++L3:	move.l	d1,d2		/* use d2 as divisor backup */
++L4:	lsr.l	IMM (1),d1	/* shift divisor */
++	lsr.l	IMM (1),d0	/* shift dividend */
++	cmp.l	IMM (0x10000),d1 /* still divisor >= 2 ^ 16 ?  */
++	bcc	L4
++	divu	d1,d0		/* now we have 16 bit divisor */
++	and.l	IMM (0xffff),d0 /* mask out divisor, ignore remainder */
++
++/* Multiply the 16 bit tentative quotient with the 32 bit divisor.  Because of
++   the operand ranges, this might give a 33 bit product.  If this product is
++   greater than the dividend, the tentative quotient was too large. */
++	move.l	d2,d1
++	mulu	d0,d1		/* low part, 32 bits */
++	swap	d2
++	mulu	d0,d2		/* high part, at most 17 bits */
++	swap	d2		/* align high part with low part */
++	tst.w	d2		/* high part 17 bits? */
++	bne	L5		/* if 17 bits, quotient was too large */
++	add.l	d2,d1		/* add parts */
++	bcs	L5		/* if sum is 33 bits, quotient was too large */
++	cmp.l	8(sp),d1	/* compare the sum with the dividend */
++	bls	L6		/* if sum > dividend, quotient was too large */
++L5:	subq.l	IMM (1),d0	/* adjust quotient */
++
++L6:	move.l	(sp)+,d2
++	rts
++
++#else /* __mcf5200__ */
++
++/* Coldfire implementation of non-restoring division algorithm from
++   Hennessy & Patterson, Appendix A. */
++	link	a6,IMM (-12)
++	movem.l	d2-d4,(sp)
++	move.l	8(a6),d0
++	move.l	12(a6),d1
++	clr.l	d2		;| clear p
++	moveq	IMM (31),d4
++L1:	add.l	d0,d0		;| shift reg pair (p,a) one bit left
++	addx.l	d2,d2
++	move.l	d2,d3		;| subtract b from p, store in tmp.
++	sub.l	d1,d3
++	bcs	L2		;| if no carry,
++	bset	IMM (0),d0	;| set the low order bit of a to 1,
++	move.l	d3,d2		;| and store tmp in p.
++L2:	subq.l	IMM (1),d4
++	bcc	L1
++	movem.l	(sp),d2-d4	;| restore data registers
++	unlk	a6		;| and return
++	rts
++#endif /* __mcf5200__ */
++
++#endif /* L_udivsi3 */
++
++#ifdef  L_divsi3
++	.text
++	/*.proc*/
++	.globl	SYM (__divsi3)
++SYM (__divsi3):
++	move.l	d2,-(sp)
++
++	moveq	IMM (1),d2	/* sign of result stored in d2 (=1 or =-1) */
++	move.l	12(sp),d1	/* d1 = divisor */
++	bpl	L1
++	neg.l	d1
++#ifndef __mcf5200__
++	neg.b	d2		/* change sign because divisor <0  */
++#else
++	neg.l	d2		/* change sign because divisor <0  */
++#endif
++L1:	move.l	8(sp),d0	/* d0 = dividend */
++	bpl	L2
++	neg.l	d0
++#ifndef __mcf5200__
++	neg.b	d2
++#else
++	neg.l	d2
++#endif
++
++L2:	move.l	d1,-(sp)
++	move.l	d0,-(sp)
++	bsr	SYM (__udivsi3)	/* divide abs(dividend) by abs(divisor) */
++	addq.l	IMM (8),sp
++
++	tst.b	d2
++	bpl	L3
++	neg.l	d0
++
++L3:	move.l	(sp)+,d2
++	rts
++#endif /* L_divsi3 */
++
++#ifdef  L_umodsi3
++	.text
++	/*.proc*/
++	.globl	SYM (__umodsi3)
++SYM (__umodsi3):
++	move.l	8(sp),d1	/* d1 = divisor */
++	move.l	4(sp),d0	/* d0 = dividend */
++	move.l	d1,-(sp)
++	move.l	d0,-(sp)
++	bsr	SYM (__udivsi3)
++	addq.l	IMM (8),sp
++	move.l	8(sp),d1	/* d1 = divisor */
++#ifndef __mcf5200__
++	move.l	d1,-(sp)
++	move.l	d0,-(sp)
++	bsr	SYM (__mulsi3)	/* d0 = (a/b)*b */
++	addq.l	IMM (8),sp
++#else
++	muls.l	d1,d0
++#endif
++	move.l	4(sp),d1	/* d1 = dividend */
++	sub.l	d0,d1		/* d1 = a - (a/b)*b */
++	move.l	d1,d0
++	rts
++#endif /* L_umodsi3 */
++
++#ifdef  L_modsi3
++	.text
++	/*.proc*/
++	.globl	SYM (__modsi3)
++SYM (__modsi3):
++	move.l	8(sp),d1	/* d1 = divisor */
++	move.l	4(sp),d0	/* d0 = dividend */
++	move.l	d1,-(sp)
++	move.l	d0,-(sp)
++	bsr	SYM (__divsi3)
++	addq.l	IMM (8),sp
++	move.l	8(sp),d1	/* d1 = divisor */
++#ifndef __mcf5200__
++	move.l	d1,-(sp)
++	move.l	d0,-(sp)
++	bsr	SYM (__mulsi3)	/* d0 = (a/b)*b */
++	addq.l	IMM (8),sp
++#else
++	muls.l	d1,d0
++#endif
++	move.l	4(sp),d1	/* d1 = dividend */
++	sub.l	d0,d1		/* d1 = a - (a/b)*b */
++	move.l	d1,d0
++	rts
++#endif /* L_modsi3 */
++
++
++#ifdef  L_double
++
++	.globl	SYM (_fpCCR)
++	.globl  _exception_handler
++
++QUIET_NaN      = 0xffffffff
++
++D_MAX_EXP      = 0x07ff
++D_BIAS         = 1022
++DBL_MAX_EXP    = D_MAX_EXP - D_BIAS
++DBL_MIN_EXP    = 1 - D_BIAS
++DBL_MANT_DIG   = 53
++
++INEXACT_RESULT 		= 0x0001
++UNDERFLOW 		= 0x0002
++OVERFLOW 		= 0x0004
++DIVIDE_BY_ZERO 		= 0x0008
++INVALID_OPERATION 	= 0x0010
++
++DOUBLE_FLOAT = 2
++
++NOOP         = 0
++ADD          = 1
++MULTIPLY     = 2
++DIVIDE       = 3
++NEGATE       = 4
++COMPARE      = 5
++EXTENDSFDF   = 6
++TRUNCDFSF    = 7
++
++UNKNOWN           = -1
++ROUND_TO_NEAREST  = 0 ;| round result to nearest representable value
++ROUND_TO_ZERO     = 1 ;| round result towards zero
++ROUND_TO_PLUS     = 2 ;| round result towards plus infinity
++ROUND_TO_MINUS    = 3 ;| round result towards minus infinity
++
++;| Entry points:
++
++	.globl SYM (__adddf3)
++	.globl SYM (__subdf3)
++	.globl SYM (__muldf3)
++	.globl SYM (__divdf3)
++	.globl SYM (__negdf2)
++	.globl SYM (__cmpdf2)
++
++	.text
++	.even
++
++;| These are common routines to return and signal exceptions.	
++
++Ldden:
++;| Return and signal a denormalized number
++	or.l	d7,d0
++	move.w	IMM (INEXACT_RESULT+UNDERFLOW),d7
++	moveq	IMM (DOUBLE_FLOAT),d6
++	jmp	_exception_handler
++
++Ldinfty:
++Ldoverflow:
++;| Return a properly signed INFINITY and set the exception flags 
++	move.l	IMM (0x7ff00000),d0
++	move.l	IMM (0),d1
++	or.l	d7,d0
++	move.w	IMM (INEXACT_RESULT+OVERFLOW),d7
++	moveq	IMM (DOUBLE_FLOAT),d6
++	jmp	_exception_handler
++
++Ldunderflow:
++;| Return 0 and set the exception flags 
++	move.l	IMM (0),d0
++	move.l	d0,d1
++	move.w	IMM (INEXACT_RESULT+UNDERFLOW),d7
++	moveq	IMM (DOUBLE_FLOAT),d6
++	jmp	_exception_handler
++
++Ldinop:
++;| Return a quiet NaN and set the exception flags
++	move.l	IMM (QUIET_NaN),d0
++	move.l	d0,d1
++	move.w	IMM (INEXACT_RESULT+INVALID_OPERATION),d7
++	moveq	IMM (DOUBLE_FLOAT),d6
++	jmp	_exception_handler
++
++Lddiv0:
++;| Return a properly signed INFINITY and set the exception flags
++	move.l	IMM (0x7ff00000),d0
++	move.l	IMM (0),d1
++	or.l	d7,d0
++	move.w	IMM (INEXACT_RESULT+DIVIDE_BY_ZERO),d7
++	moveq	IMM (DOUBLE_FLOAT),d6
++	jmp	_exception_handler
++
++;|=============================================================================
++;|=============================================================================
++;|                         double precision routines
++;|=============================================================================
++;|=============================================================================
++
++;| A double precision floating point number (double) has the format:
++;|
++;| struct _double {
++;|  unsigned int sign      : 1;  /* sign bit */ 
++;|  unsigned int exponent  : 11; /* exponent, shifted by 126 */
++;|  unsigned int fraction  : 52; /* fraction */
++;| } double;
++;| 
++;| Thus sizeof(double) = 8 (64 bits). 
++;|
++;| All the routines are callable from C programs, and return the result 
++;| in the register pair d0-d1. They also preserve all registers except 
++;| d0-d1 and a0-a1.
++
++;|=============================================================================
++;|                              __subdf3
++;|=============================================================================
++
++;| double __subdf3(double, double);
++SYM (__subdf3):
++	bchg	IMM (31),12(sp) ;| change sign of second operand
++				;| and fall through, so we always add
++;|=============================================================================
++;|                              __adddf3
++;|=============================================================================
++
++;| double __adddf3(double, double);
++SYM (__adddf3):
++#ifndef __mcf5200__
++	link	a6,IMM (0)	;| everything will be done in registers
++	movem.l	d2-d7,-(sp)	;| save all data registers and a2 (but d0-d1)
++#else
++	link	a6,IMM (-24)
++	movem.l	d2-d7,(sp)
++#endif
++	move.l	8(a6),d0	;| get first operand
++	move.l	12(a6),d1	;| 
++	move.l	16(a6),d2	;| get second operand
++	move.l	20(a6),d3	;| 
++
++	move.l	d0,d7		;| get d0's sign bit in d7 '
++	add.l	d1,d1		;| check and clear sign bit of a, and gain one
++	addx.l	d0,d0		;| bit of extra precision
++	beq	Ladddfb	;| if zero return second operand
++
++	move.l	d2,d6		;| save sign in d6 
++	add.l	d3,d3		;| get rid of sign bit and gain one bit of
++	addx.l	d2,d2		;| extra precision
++	beq	Ladddfa	;| if zero return first operand
++
++	and.l	IMM (0x80000000),d7 ;| isolate a's sign bit '
++        swap	d6		;| and also b's sign bit '
++#ifndef __mcf5200__
++	and.w	IMM (0x8000),d6	;|
++	or.w	d6,d7		;| and combine them into d7, so that a's sign '
++				;| bit is in the high word and b's is in the '
++				;| low word, so d6 is free to be used
++#else
++	and.l	IMM (0x8000),d6
++	or.l	d6,d7
++#endif
++	move.l	d7,a0		;| now save d7 into a0, so d7 is free to
++                		;| be used also
++
++;| Get the exponents and check for denormalized and/or infinity.
++
++	move.l	IMM (0x001fffff),d6 ;| mask for the fraction
++	move.l	IMM (0x00200000),d7 ;| mask to put hidden bit back
++
++	move.l	d0,d4		;| 
++	and.l	d6,d0		;| get fraction in d0
++	not.l	d6		;| make d6 into mask for the exponent
++	and.l	d6,d4		;| get exponent in d4
++	beq	Ladddfaden	;| branch if a is denormalized
++	cmp.l	d6,d4		;| check for INFINITY or NaN
++	beq	Ladddfnf       ;| 
++	or.l	d7,d0		;| and put hidden bit back
++Ladddf1:
++	swap	d4		;| shift right exponent so that it starts
++#ifndef __mcf5200__
++	lsr.w	IMM (5),d4	;| in bit 0 and not bit 20
++#else
++	lsr.l	IMM (5),d4	;| in bit 0 and not bit 20
++#endif
++;| Now we have a's exponent in d4 and fraction in d0-d1 '
++	move.l	d2,d5		;| save b to get exponent
++	and.l	d6,d5		;| get exponent in d5
++	beq	Ladddfbden	;| branch if b is denormalized
++	cmp.l	d6,d5		;| check for INFINITY or NaN
++	beq	Ladddfnf
++	not.l	d6		;| make d6 into mask for the fraction again
++	and.l	d6,d2		;| and get fraction in d2
++	or.l	d7,d2		;| and put hidden bit back
++Ladddf2:
++	swap	d5		;| shift right exponent so that it starts
++#ifndef __mcf5200__
++	lsr.w	IMM (5),d5	;| in bit 0 and not bit 20
++#else
++	lsr.l	IMM (5),d5	;| in bit 0 and not bit 20
++#endif
++
++;| Now we have b's exponent in d5 and fraction in d2-d3. '
++
++;| The situation now is as follows: the signs are combined in a0, the 
++;| numbers are in d0-d1 (a) and d2-d3 (b), and the exponents in d4 (a)
++;| and d5 (b). To do the rounding correctly we need to keep all the
++;| bits until the end, so we need to use d0-d1-d2-d3 for the first number
++;| and d4-d5-d6-d7 for the second. To do this we store (temporarily) the
++;| exponents in a2-a3.
++
++#ifndef __mcf5200__
++	movem.l	a2-a3,-(sp)	;| save the address registers
++#else
++	move.l	a2,-(sp)	
++	move.l	a3,-(sp)	
++	move.l	a4,-(sp)	
++#endif
++
++	move.l	d4,a2		;| save the exponents
++	move.l	d5,a3		;| 
++
++	move.l	IMM (0),d7	;| and move the numbers around
++	move.l	d7,d6		;|
++	move.l	d3,d5		;|
++	move.l	d2,d4		;|
++	move.l	d7,d3		;|
++	move.l	d7,d2		;|
++
++;| Here we shift the numbers until the exponents are the same, and put 
++;| the largest exponent in a2.
++#ifndef __mcf5200__
++	exg	d4,a2		;| get exponents back
++	exg	d5,a3		;|
++	cmp.w	d4,d5		;| compare the exponents
++#else
++	move.l	d4,a4		;| get exponents back
++	move.l	a2,d4
++	move.l	a4,a2
++	move.l	d5,a4
++	move.l	a3,d5
++	move.l	a4,a3
++	cmp.l	d4,d5		;| compare the exponents
++#endif
++	beq	Ladddf3	;| if equal don't shift '
++	bhi	9f		;| branch if second exponent is higher
++
++;| Here we have a's exponent larger than b's, so we have to shift b. We do 
++;| this by using as counter d2:
++1:	move.w	d4,d2		;| move largest exponent to d2
++#ifndef __mcf5200__
++	sub.w	d5,d2		;| and subtract second exponent
++	exg	d4,a2		;| get back the longs we saved
++	exg	d5,a3		;|
++#else
++	sub.l	d5,d2		;| and subtract second exponent
++	move.l	d4,a4		;| get back the longs we saved
++	move.l	a2,d4
++	move.l	a4,a2
++	move.l	d5,a4
++	move.l	a3,d5
++	move.l	a4,a3
++#endif
++;| if difference is too large we don't shift (actually, we can just exit) '
++#ifndef __mcf5200__
++	cmp.w	IMM (DBL_MANT_DIG+2),d2
++#else
++	cmp.l	IMM (DBL_MANT_DIG+2),d2
++#endif
++	bge	Ladddfbsmall
++#ifndef __mcf5200__
++	cmp.w	IMM (32),d2	;| if difference >= 32, shift by longs
++#else
++	cmp.l	IMM (32),d2	;| if difference >= 32, shift by longs
++#endif
++	bge	5f
++2:
++#ifndef __mcf5200__
++	cmp.w	IMM (16),d2	;| if difference >= 16, shift by words	
++#else
++	cmp.l	IMM (16),d2	;| if difference >= 16, shift by words	
++#endif
++	bge	6f
++	bra	3f		;| enter dbra loop
++
++4:
++#ifndef __mcf5200__
++	lsr.l	IMM (1),d4
++	roxr.l	IMM (1),d5
++	roxr.l	IMM (1),d6
++	roxr.l	IMM (1),d7
++#else
++	lsr.l	IMM (1),d7
++	btst	IMM (0),d6
++	beq	10f
++	bset	IMM (31),d7
++10:	lsr.l	IMM (1),d6
++	btst	IMM (0),d5
++	beq	11f
++	bset	IMM (31),d6
++11:	lsr.l	IMM (1),d5
++	btst	IMM (0),d4
++	beq	12f
++	bset	IMM (31),d5
++12:	lsr.l	IMM (1),d4
++#endif
++3:
++#ifndef __mcf5200__
++	dbra	d2,4b
++#else
++	subq.l	IMM (1),d2
++	bpl	4b	
++#endif
++	move.l	IMM (0),d2
++	move.l	d2,d3	
++	bra	Ladddf4
++5:
++	move.l	d6,d7
++	move.l	d5,d6
++	move.l	d4,d5
++	move.l	IMM (0),d4
++#ifndef __mcf5200__
++	sub.w	IMM (32),d2
++#else
++	sub.l	IMM (32),d2
++#endif
++	bra	2b
++6:
++	move.w	d6,d7
++	swap	d7
++	move.w	d5,d6
++	swap	d6
++	move.w	d4,d5
++	swap	d5
++	move.w	IMM (0),d4
++	swap	d4
++#ifndef __mcf5200__
++	sub.w	IMM (16),d2
++#else
++	sub.l	IMM (16),d2
++#endif
++	bra	3b
++	
++9:
++#ifndef __mcf5200__
++	exg	d4,d5
++	move.w	d4,d6
++	sub.w	d5,d6		;| keep d5 (largest exponent) in d4
++	exg	d4,a2
++	exg	d5,a3
++#else
++	move.l	d5,d6
++	move.l	d4,d5
++	move.l	d6,d4
++	sub.l	d5,d6
++	move.l	d4,a4
++	move.l	a2,d4
++	move.l	a4,a2
++	move.l	d5,a4
++	move.l	a3,d5
++	move.l	a4,a3
++#endif
++;| if difference is too large we don't shift (actually, we can just exit) '
++#ifndef __mcf5200__
++	cmp.w	IMM (DBL_MANT_DIG+2),d6
++#else
++	cmp.l	IMM (DBL_MANT_DIG+2),d6
++#endif
++	bge	Ladddfasmall
++#ifndef __mcf5200__
++	cmp.w	IMM (32),d6	;| if difference >= 32, shift by longs
++#else
++	cmp.l	IMM (32),d6	;| if difference >= 32, shift by longs
++#endif
++	bge	5f
++2:
++#ifndef __mcf5200__
++	cmp.w	IMM (16),d6	;| if difference >= 16, shift by words	
++#else
++	cmp.l	IMM (16),d6	;| if difference >= 16, shift by words	
++#endif
++	bge	6f
++	bra	3f		;| enter dbra loop
++
++4:
++#ifndef __mcf5200__
++	lsr.l	IMM (1),d0
++	roxr.l	IMM (1),d1
++	roxr.l	IMM (1),d2
++	roxr.l	IMM (1),d3
++#else
++	lsr.l	IMM (1),d3
++	btst	IMM (0),d2
++	beq	10f
++	bset	IMM (31),d3
++10:	lsr.l	IMM (1),d2
++	btst	IMM (0),d1
++	beq	11f
++	bset	IMM (31),d2
++11:	lsr.l	IMM (1),d1
++	btst	IMM (0),d0
++	beq	12f
++	bset	IMM (31),d1
++12:	lsr.l	IMM (1),d0
++#endif
++3:
++#ifndef __mcf5200__
++	dbra	d6,4b
++#else
++	subq.l	IMM (1),d6
++	bpl	4b
++#endif
++	move.l	IMM (0),d7
++	move.l	d7,d6
++	bra	Ladddf4
++5:
++	move.l	d2,d3
++	move.l	d1,d2
++	move.l	d0,d1
++	move.l	IMM (0),d0
++#ifndef __mcf5200__
++	sub.w	IMM (32),d6
++#else
++	sub.l	IMM (32),d6
++#endif
++	bra	2b
++6:
++	move.w	d2,d3
++	swap	d3
++	move.w	d1,d2
++	swap	d2
++	move.w	d0,d1
++	swap	d1
++	move.w	IMM (0),d0
++	swap	d0
++#ifndef __mcf5200__
++	sub.w	IMM (16),d6
++#else
++	sub.l	IMM (16),d6
++#endif
++	bra	3b
++Ladddf3:
++#ifndef __mcf5200__
++	exg	d4,a2	
++	exg	d5,a3
++#else
++	move.l	d4,a4
++	move.l	a2,d4
++	move.l	a4,a2
++	move.l	d5,a4
++	move.l	a3,d5
++	move.l	a4,a3
++#endif
++Ladddf4:	
++;| Now we have the numbers in d0--d3 and d4--d7, the exponent in a2, and
++;| the signs in a4.
++
++;| Here we have to decide whether to add or subtract the numbers:
++#ifndef __mcf5200__
++	exg	d7,a0		;| get the signs 
++	exg	d6,a3		;| a3 is free to be used
++#else
++	move.l	d7,a4
++	move.l	a0,d7
++	move.l	a4,a0
++	move.l	d6,a4
++	move.l	a3,d6
++	move.l	a4,a3
++#endif
++	move.l	d7,d6		;|
++	move.w	IMM (0),d7	;| get a's sign in d7 '
++	swap	d6              ;|
++	move.w	IMM (0),d6	;| and b's sign in d6 '
++	eor.l	d7,d6		;| compare the signs
++	bmi	Lsubdf0	;| if the signs are different we have 
++				;| to subtract
++#ifndef __mcf5200__
++	exg	d7,a0		;| else we add the numbers
++	exg	d6,a3		;|
++#else
++	move.l	d7,a4
++	move.l	a0,d7
++	move.l	a4,a0
++	move.l	d6,a4
++	move.l	a3,d6
++	move.l	a4,a3
++#endif
++	add.l	d7,d3		;|
++	addx.l	d6,d2		;|
++	addx.l	d5,d1		;| 
++	addx.l	d4,d0           ;|
++
++	move.l	a2,d4		;| return exponent to d4
++	move.l	a0,d7		;| 
++	and.l	IMM (0x80000000),d7 ;| d7 now has the sign
++
++#ifndef __mcf5200__
++	movem.l	(sp)+,a2-a3	
++#else
++	move.l	(sp)+,a4	
++	move.l	(sp)+,a3	
++	move.l	(sp)+,a2	
++#endif
++
++;| Before rounding normalize so bit #DBL_MANT_DIG is set (we will consider
++;| the case of denormalized numbers in the rounding routine itself).
++;| As in the addition (not in the subtraction!) we could have set 
++;| one more bit we check this:
++	btst	IMM (DBL_MANT_DIG+1),d0	
++	beq	1f
++#ifndef __mcf5200__
++	lsr.l	IMM (1),d0
++	roxr.l	IMM (1),d1
++	roxr.l	IMM (1),d2
++	roxr.l	IMM (1),d3
++	add.w	IMM (1),d4
++#else
++	lsr.l	IMM (1),d3
++	btst	IMM (0),d2
++	beq	10f
++	bset	IMM (31),d3
++10:	lsr.l	IMM (1),d2
++	btst	IMM (0),d1
++	beq	11f
++	bset	IMM (31),d2
++11:	lsr.l	IMM (1),d1
++	btst	IMM (0),d0
++	beq	12f
++	bset	IMM (31),d1
++12:	lsr.l	IMM (1),d0
++	add.l	IMM (1),d4
++#endif
++1:
++	lea	Ladddf5,a0	;| to return from rounding routine
++	lea	SYM (_fpCCR),a1	;| check the rounding mode
++#ifdef __mcf5200__
++	clr.l	d6
++#endif
++	move.w	6(a1),d6	;| rounding mode in d6
++	beq	Lroundtonearest
++#ifndef __mcf5200__
++	cmp.w	IMM (ROUND_TO_PLUS),d6
++#else
++	cmp.l	IMM (ROUND_TO_PLUS),d6
++#endif
++	bhi	Lroundtominus
++	blt	Lroundtozero
++	bra	Lroundtoplus
++Ladddf5:
++;| Put back the exponent and check for overflow
++#ifndef __mcf5200__
++	cmp.w	IMM (0x7ff),d4	;| is the exponent big?
++#else
++	cmp.l	IMM (0x7ff),d4	;| is the exponent big?
++#endif
++	bge	1f
++	bclr	IMM (DBL_MANT_DIG-1),d0
++#ifndef __mcf5200__
++	lsl.w	IMM (4),d4	;| put exponent back into position
++#else
++	lsl.l	IMM (4),d4	;| put exponent back into position
++#endif
++	swap	d0		;| 
++#ifndef __mcf5200__
++	or.w	d4,d0		;|
++#else
++	or.l	d4,d0		;|
++#endif
++	swap	d0		;|
++	bra	Ladddfret
++1:
++	move.w	IMM (ADD),d5
++	bra	Ldoverflow
++
++Lsubdf0:
++;| Here we do the subtraction.
++#ifndef __mcf5200__
++	exg	d7,a0		;| put sign back in a0
++	exg	d6,a3		;|
++#else
++	move.l	d7,a4
++	move.l	a0,d7
++	move.l	a4,a0
++	move.l	d6,a4
++	move.l	a3,d6
++	move.l	a4,a3
++#endif
++	sub.l	d7,d3		;|
++	subx.l	d6,d2		;|
++	subx.l	d5,d1		;|
++	subx.l	d4,d0		;|
++	beq	Ladddfret1	;| if zero just exit
++	bpl	1f		;| if positive skip the following
++	move.l	a0,d7		;|
++	bchg	IMM (31),d7	;| change sign bit in d7
++	move.l	d7,a0		;|
++	neg.l	d3		;|
++	negx.l	d2		;|
++	negx.l	d1              ;| and negate result
++	negx.l	d0              ;|
++1:	
++	move.l	a2,d4		;| return exponent to d4
++	move.l	a0,d7
++	and.l	IMM (0x80000000),d7 ;| isolate sign bit
++#ifndef __mcf5200__
++	movem.l	(sp)+,a2-a3	;|
++#else
++	move.l	(sp)+,a4
++	move.l	(sp)+,a3
++	move.l	(sp)+,a2
++#endif
++
++;| Before rounding normalize so bit #DBL_MANT_DIG is set (we will consider
++;| the case of denormalized numbers in the rounding routine itself).
++;| As in the addition (not in the subtraction!) we could have set 
++;| one more bit we check this:
++	btst	IMM (DBL_MANT_DIG+1),d0	
++	beq	1f
++#ifndef __mcf5200__
++	lsr.l	IMM (1),d0
++	roxr.l	IMM (1),d1
++	roxr.l	IMM (1),d2
++	roxr.l	IMM (1),d3
++	add.w	IMM (1),d4
++#else
++	lsr.l	IMM (1),d3
++	btst	IMM (0),d2
++	beq	10f
++	bset	IMM (31),d3
++10:	lsr.l	IMM (1),d2
++	btst	IMM (0),d1
++	beq	11f
++	bset	IMM (31),d2
++11:	lsr.l	IMM (1),d1
++	btst	IMM (0),d0
++	beq	12f
++	bset	IMM (31),d1
++12:	lsr.l	IMM (1),d0
++	add.l	IMM (1),d4
++#endif
++1:
++	lea	Lsubdf1,a0	;| to return from rounding routine
++	lea	SYM (_fpCCR),a1	;| check the rounding mode
++#ifdef __mcf5200__
++	clr.l	d6
++#endif
++	move.w	6(a1),d6	;| rounding mode in d6
++	beq	Lroundtonearest
++#ifndef __mcf5200__
++	cmp.w	IMM (ROUND_TO_PLUS),d6
++#else
++	cmp.l	IMM (ROUND_TO_PLUS),d6
++#endif
++	bhi	Lroundtominus
++	blt	Lroundtozero
++	bra	Lroundtoplus
++Lsubdf1:
++;| Put back the exponent and sign (we don't have overflow). '
++	bclr	IMM (DBL_MANT_DIG-1),d0	
++#ifndef __mcf5200__
++	lsl.w	IMM (4),d4	;| put exponent back into position
++#else
++	lsl.l	IMM (4),d4	;| put exponent back into position
++#endif
++	swap	d0		;| 
++#ifndef __mcf5200__
++	or.w	d4,d0		;|
++#else
++	or.l	d4,d0		;|
++#endif
++	swap	d0		;|
++	bra	Ladddfret
++
++;| If one of the numbers was too small (difference of exponents >= 
++;| DBL_MANT_DIG+1) we return the other (and now we don't have to '
++;| check for finiteness or zero).
++Ladddfasmall:
++#ifndef __mcf5200__
++	movem.l	(sp)+,a2-a3	
++#else
++	move.l	(sp)+,a4
++	move.l	(sp)+,a3
++	move.l	(sp)+,a2
++#endif
++	move.l	16(a6),d0
++	move.l	20(a6),d1
++	lea	SYM (_fpCCR),a0
++	move.w	IMM (0),(a0)
++#ifndef __mcf5200__
++	movem.l	(sp)+,d2-d7	;| restore data registers
++#else
++	movem.l	(sp),d2-d7
++	;| XXX if frame pointer is ever removed, stack pointer must
++	;| be adjusted here.
++#endif
++	unlk	a6		;| and return
++	rts
++
++Ladddfbsmall:
++#ifndef __mcf5200__
++	movem.l	(sp)+,a2-a3	
++#else
++	move.l	(sp)+,a4	
++	move.l	(sp)+,a3	
++	move.l	(sp)+,a2	
++#endif
++	move.l	8(a6),d0
++	move.l	12(a6),d1
++	lea	SYM (_fpCCR),a0
++	move.w	IMM (0),(a0)
++#ifndef __mcf5200__
++	movem.l	(sp)+,d2-d7	;| restore data registers
++#else
++	movem.l	(sp),d2-d7
++	;| XXX if frame pointer is ever removed, stack pointer must
++	;| be adjusted here.
++#endif
++	unlk	a6		;| and return
++	rts
++
++Ladddfaden:
++	move.l	d7,d4		;| d7 contains 0x00200000
++	bra	Ladddf1
++
++Ladddfbden:
++	move.l	d7,d5           ;| d7 contains 0x00200000
++	not.l	d6
++	bra	Ladddf2
++
++Ladddfb:
++;| Return b (if a is zero)
++	move.l	d2,d0
++	move.l	d3,d1
++	bra	1f
++Ladddfa:
++	move.l	8(a6),d0
++	move.l	12(a6),d1
++1:
++	move.w	IMM (ADD),d5
++;| Check for NaN and +/-INFINITY.
++	move.l	d0,d7         		;|
++	and.l	IMM (0x80000000),d7	;|
++	bclr	IMM (31),d0		;|
++	cmp.l	IMM (0x7ff00000),d0	;|
++	bge	2f			;|
++	move.l	d0,d0           	;| check for zero, since we don't  '
++	bne	Ladddfret		;| want to return -0 by mistake
++	bclr	IMM (31),d7		;|
++	bra	Ladddfret		;|
++2:
++	and.l	IMM (0x000fffff),d0	;| check for NaN (nonzero fraction)
++	or.l	d1,d0			;|
++	bne	Ldinop         	;|
++	bra	Ldinfty		;|
++	
++Ladddfret1:
++#ifndef __mcf5200__
++	movem.l	(sp)+,a2-a3	;| restore regs and exit
++#else
++	move.l	(sp)+,a4
++	move.l	(sp)+,a3
++	move.l	(sp)+,a2
++#endif
++
++Ladddfret:
++;| Normal exit.
++	lea	SYM (_fpCCR),a0
++	move.w	IMM (0),(a0)
++	or.l	d7,d0		;| put sign bit back
++#ifndef __mcf5200__
++	movem.l	(sp)+,d2-d7
++#else
++	movem.l	(sp),d2-d7
++	;| XXX if frame pointer is ever removed, stack pointer must
++	;| be adjusted here.
++#endif
++	unlk	a6
++	rts
++
++Ladddfretden:
++;| Return a denormalized number.
++#ifndef __mcf5200__
++	lsr.l	IMM (1),d0	;| shift right once more
++	roxr.l	IMM (1),d1	;|
++#else
++	lsr.l	IMM (1),d1
++	btst	IMM (0),d0
++	beq	10f
++	bset	IMM (31),d1
++10:	lsr.l	IMM (1),d0
++#endif
++	bra	Ladddfret
++
++Ladddfnf:
++	move.w	IMM (ADD),d5
++;| This could be faster but it is not worth the effort, since it is not
++;| executed very often. We sacrifice speed for clarity here.
++	move.l	8(a6),d0	;| get the numbers back (remember that we
++	move.l	12(a6),d1	;| did some processing already)
++	move.l	16(a6),d2	;| 
++	move.l	20(a6),d3	;| 
++	move.l	IMM (0x7ff00000),d4 ;| useful constant (INFINITY)
++	move.l	d0,d7		;| save sign bits
++	move.l	d2,d6		;| 
++	bclr	IMM (31),d0	;| clear sign bits
++	bclr	IMM (31),d2	;| 
++;| We know that one of them is either NaN of +/-INFINITY
++;| Check for NaN (if either one is NaN return NaN)
++	cmp.l	d4,d0		;| check first a (d0)
++	bhi	Ldinop		;| if d0 > 0x7ff00000 or equal and
++	bne	2f
++	tst.l	d1		;| d1 > 0, a is NaN
++	bne	Ldinop		;| 
++2:	cmp.l	d4,d2		;| check now b (d1)
++	bhi	Ldinop		;| 
++	bne	3f
++	tst.l	d3		;| 
++	bne	Ldinop		;| 
++3:
++;| Now comes the check for +/-INFINITY. We know that both are (maybe not
++;| finite) numbers, but we have to check if both are infinite whether we
++;| are adding or subtracting them.
++	eor.l	d7,d6		;| to check sign bits
++	bmi	1f
++	and.l	IMM (0x80000000),d7 ;| get (common) sign bit
++	bra	Ldinfty
++1:
++;| We know one (or both) are infinite, so we test for equality between the
++;| two numbers (if they are equal they have to be infinite both, so we
++;| return NaN).
++	cmp.l	d2,d0		;| are both infinite?
++	bne	1f		;| if d0 <> d2 they are not equal
++	cmp.l	d3,d1		;| if d0 == d2 test d3 and d1
++	beq	Ldinop		;| if equal return NaN
++1:	
++	and.l	IMM (0x80000000),d7 ;| get a's sign bit '
++	cmp.l	d4,d0		;| test now for infinity
++	beq	Ldinfty	;| if a is INFINITY return with this sign
++	bchg	IMM (31),d7	;| else we know b is INFINITY and has
++	bra	Ldinfty	;| the opposite sign
++
++;|=============================================================================
++;|                              __muldf3
++;|=============================================================================
++
++;| double __muldf3(double, double);
++SYM (__muldf3):
++#ifndef __mcf5200__
++	link	a6,IMM (0)
++	movem.l	d2-d7,-(sp)
++#else
++	link	a6,IMM (-24)
++	movem.l	d2-d7,(sp)
++#endif
++	move.l	8(a6),d0		;| get a into d0-d1
++	move.l	12(a6),d1		;| 
++	move.l	16(a6),d2		;| and b into d2-d3
++	move.l	20(a6),d3		;|
++	move.l	d0,d7			;| d7 will hold the sign of the product
++	eor.l	d2,d7			;|
++	and.l	IMM (0x80000000),d7	;|
++	move.l	d7,a0			;| save sign bit into a0 
++	move.l	IMM (0x7ff00000),d7	;| useful constant (+INFINITY)
++	move.l	d7,d6			;| another (mask for fraction)
++	not.l	d6			;|
++	bclr	IMM (31),d0		;| get rid of a's sign bit '
++	move.l	d0,d4			;| 
++	or.l	d1,d4			;| 
++	beq	Lmuldfa0		;| branch if a is zero
++	move.l	d0,d4			;|
++	bclr	IMM (31),d2		;| get rid of b's sign bit '
++	move.l	d2,d5			;|
++	or.l	d3,d5			;| 
++	beq	Lmuldfb0		;| branch if b is zero
++	move.l	d2,d5			;| 
++	cmp.l	d7,d0			;| is a big?
++	bhi	Lmuldfinop		;| if a is NaN return NaN
++	beq	Lmuldfanf		;| we still have to check d1 and b ...
++	cmp.l	d7,d2			;| now compare b with INFINITY
++	bhi	Lmuldfinop		;| is b NaN?
++	beq	Lmuldfbnf 		;| we still have to check d3 ...
++;| Here we have both numbers finite and nonzero (and with no sign bit).
++;| Now we get the exponents into d4 and d5.
++	and.l	d7,d4			;| isolate exponent in d4
++	beq	Lmuldfaden		;| if exponent zero, have denormalized
++	and.l	d6,d0			;| isolate fraction
++	or.l	IMM (0x00100000),d0	;| and put hidden bit back
++	swap	d4			;| I like exponents in the first byte
++#ifndef __mcf5200__
++	lsr.w	IMM (4),d4		;| 
++#else
++	lsr.l	IMM (4),d4		;| 
++#endif
++Lmuldf1:			
++	and.l	d7,d5			;|
++	beq	Lmuldfbden		;|
++	and.l	d6,d2			;|
++	or.l	IMM (0x00100000),d2	;| and put hidden bit back
++	swap	d5			;|
++#ifndef __mcf5200__
++	lsr.w	IMM (4),d5		;|
++#else
++	lsr.l	IMM (4),d5		;|
++#endif
++Lmuldf2:				;|
++#ifndef __mcf5200__
++	add.w	d5,d4			;| add exponents
++	sub.w	IMM (D_BIAS+1),d4	;| and subtract bias (plus one)
++#else
++	add.l	d5,d4			;| add exponents
++	sub.l	IMM (D_BIAS+1),d4	;| and subtract bias (plus one)
++#endif
++
++;| We are now ready to do the multiplication. The situation is as follows:
++;| both a and b have bit 52 ( bit 20 of d0 and d2) set (even if they were 
++;| denormalized to start with!), which means that in the product bit 104 
++;| (which will correspond to bit 8 of the fourth long) is set.
++
++;| Here we have to do the product.
++;| To do it we have to juggle the registers back and forth, as there are not
++;| enough to keep everything in them. So we use the address registers to keep
++;| some intermediate data.
++
++#ifndef __mcf5200__
++	movem.l	a2-a3,-(sp)	;| save a2 and a3 for temporary use
++#else
++	move.l	a2,-(sp)
++	move.l	a3,-(sp)
++	move.l	a4,-(sp)
++#endif
++	move.l	IMM (0),a2	;| a2 is a null register
++	move.l	d4,a3		;| and a3 will preserve the exponent
++
++;| First, shift d2-d3 so bit 20 becomes bit 31:
++#ifndef __mcf5200__
++	ror.l	IMM (5),d2	;| rotate d2 5 places right
++	swap	d2		;| and swap it
++	ror.l	IMM (5),d3	;| do the same thing with d3
++	swap	d3		;|
++	move.w	d3,d6		;| get the rightmost 11 bits of d3
++	and.w	IMM (0x07ff),d6	;|
++	or.w	d6,d2		;| and put them into d2
++	and.w	IMM (0xf800),d3	;| clear those bits in d3
++#else
++	moveq	IMM (11),d7	;| left shift d2 11 bits
++	lsl.l	d7,d2
++	move.l	d3,d6		;| get a copy of d3
++	lsl.l	d7,d3		;| left shift d3 11 bits
++	and.l	IMM (0xffe00000),d6 ;| get the top 11 bits of d3
++	moveq	IMM (21),d7	;| right shift them 21 bits
++	lsr.l	d7,d6
++	or.l	d6,d2		;| stick them at the end of d2
++#endif
++
++	move.l	d2,d6		;| move b into d6-d7
++	move.l	d3,d7           ;| move a into d4-d5
++	move.l	d0,d4           ;| and clear d0-d1-d2-d3 (to put result)
++	move.l	d1,d5           ;|
++	move.l	IMM (0),d3	;|
++	move.l	d3,d2           ;|
++	move.l	d3,d1           ;|
++	move.l	d3,d0	        ;|
++
++;| We use a1 as counter:	
++	move.l	IMM (DBL_MANT_DIG-1),a1		
++#ifndef __mcf5200__
++	exg	d7,a1
++#else
++	move.l	d7,a4
++	move.l	a1,d7
++	move.l	a4,a1
++#endif
++
++1:
++#ifndef __mcf5200__
++	exg	d7,a1		;| put counter back in a1
++#else
++	move.l	d7,a4
++	move.l	a1,d7
++	move.l	a4,a1
++#endif
++	add.l	d3,d3		;| shift sum once left
++	addx.l	d2,d2           ;|
++	addx.l	d1,d1           ;|
++	addx.l	d0,d0           ;|
++	add.l	d7,d7		;|
++	addx.l	d6,d6		;|
++	bcc	2f		;| if bit clear skip the following
++#ifndef __mcf5200__
++	exg	d7,a2		;|
++#else
++	move.l	d7,a4
++	move.l	a2,d7
++	move.l	a4,a2
++#endif
++	add.l	d5,d3		;| else add a to the sum
++	addx.l	d4,d2		;|
++	addx.l	d7,d1		;|
++	addx.l	d7,d0		;|
++#ifndef __mcf5200__
++	exg	d7,a2		;| 
++#else
++	move.l	d7,a4
++	move.l	a2,d7
++	move.l	a4,a2
++#endif
++2:
++#ifndef __mcf5200__
++	exg	d7,a1		;| put counter in d7
++	dbf	d7,1b		;| decrement and branch
++#else
++	move.l	d7,a4
++	move.l	a1,d7
++	move.l	a4,a1
++	subq.l	IMM (1),d7
++	bpl	1b
++#endif
++
++	move.l	a3,d4		;| restore exponent
++#ifndef __mcf5200__
++	movem.l	(sp)+,a2-a3
++#else
++	move.l	(sp)+,a4
++	move.l	(sp)+,a3
++	move.l	(sp)+,a2
++#endif
++
++;| Now we have the product in d0-d1-d2-d3, with bit 8 of d0 set. The 
++;| first thing to do now is to normalize it so bit 8 becomes bit 
++;| DBL_MANT_DIG-32 (to do the rounding); later we will shift right.
++	swap	d0
++	swap	d1
++	move.w	d1,d0
++	swap	d2
++	move.w	d2,d1
++	swap	d3
++	move.w	d3,d2
++	move.w	IMM (0),d3
++#ifndef __mcf5200__
++	lsr.l	IMM (1),d0
++	roxr.l	IMM (1),d1
++	roxr.l	IMM (1),d2
++	roxr.l	IMM (1),d3
++	lsr.l	IMM (1),d0
++	roxr.l	IMM (1),d1
++	roxr.l	IMM (1),d2
++	roxr.l	IMM (1),d3
++	lsr.l	IMM (1),d0
++	roxr.l	IMM (1),d1
++	roxr.l	IMM (1),d2
++	roxr.l	IMM (1),d3
++#else
++	moveq	IMM (29),d6
++	lsr.l	IMM (3),d3
++	move.l	d2,d7
++	lsl.l	d6,d7
++	or.l	d7,d3
++	lsr.l	IMM (3),d2
++	move.l	d1,d7
++	lsl.l	d6,d7
++	or.l	d7,d2
++	lsr.l	IMM (3),d1
++	move.l	d0,d7
++	lsl.l	d6,d7
++	or.l	d7,d1
++	lsr.l	IMM (3),d0
++#endif
++	
++;| Now round, check for over- and underflow, and exit.
++	move.l	a0,d7		;| get sign bit back into d7
++	move.w	IMM (MULTIPLY),d5
++
++	btst	IMM (DBL_MANT_DIG+1-32),d0
++	beq	Lroundexit
++#ifndef __mcf5200__
++	lsr.l	IMM (1),d0
++	roxr.l	IMM (1),d1
++	add.w	IMM (1),d4
++#else
++	lsr.l	IMM (1),d1
++	btst	IMM (0),d0
++	beq	10f
++	bset	IMM (31),d1
++10:	lsr.l	IMM (1),d0
++	add.l	IMM (1),d4
++#endif
++	bra	Lroundexit
++
++Lmuldfinop:
++	move.w	IMM (MULTIPLY),d5
++	bra	Ldinop
++
++Lmuldfbnf:
++	move.w	IMM (MULTIPLY),d5
++	move.l	a0,d7		;| get sign bit back into d7
++	tst.l	d3		;| we know d2 == 0x7ff00000, so check d3
++	bne	Ldinop		;| if d3 <> 0 b is NaN
++	bra	Ldoverflow	;| else we have overflow (since a is finite)
++
++Lmuldfanf:
++	move.w	IMM (MULTIPLY),d5
++	move.l	a0,d7		;| get sign bit back into d7
++	tst.l	d1		;| we know d0 == 0x7ff00000, so check d1
++	bne	Ldinop		;| if d1 <> 0 a is NaN
++	bra	Ldoverflow	;| else signal overflow
++
++;| If either number is zero return zero, unless the other is +/-INFINITY or
++;| NaN, in which case we return NaN.
++Lmuldfb0:
++	move.w	IMM (MULTIPLY),d5
++#ifndef __mcf5200__
++	exg	d2,d0		;| put b (==0) into d0-d1
++	exg	d3,d1		;| and a (with sign bit cleared) into d2-d3
++#else
++	move.l	d2,d7
++	move.l	d0,d2
++	move.l	d7,d0
++	move.l	d3,d7
++	move.l	d1,d3
++	move.l	d7,d1
++#endif
++	bra	1f
++Lmuldfa0:
++	move.l	16(a6),d2	;| put b into d2-d3 again
++	move.l	20(a6),d3	;|
++	bclr	IMM (31),d2	;| clear sign bit
++1:	cmp.l	IMM (0x7ff00000),d2 ;| check for non-finiteness
++	bge	Ldinop		;| in case NaN or +/-INFINITY return NaN
++	lea	SYM (_fpCCR),a0
++	move.w	IMM (0),(a0)
++#ifndef __mcf5200__
++	movem.l	(sp)+,d2-d7
++#else
++	movem.l	(sp),d2-d7
++	;| XXX if frame pointer is ever removed, stack pointer must
++	;| be adjusted here.
++#endif
++	unlk	a6
++	rts
++
++;| If a number is denormalized we put an exponent of 1 but do not put the 
++;| hidden bit back into the fraction; instead we shift left until bit 21
++;| (the hidden bit) is set, adjusting the exponent accordingly. We do this
++;| to ensure that the product of the fractions is close to 1.
++Lmuldfaden:
++	move.l	IMM (1),d4
++	and.l	d6,d0
++1:	add.l	d1,d1           ;| shift a left until bit 20 is set
++	addx.l	d0,d0		;|
++#ifndef __mcf5200__
++	sub.w	IMM (1),d4	;| and adjust exponent
++#else
++	sub.l	IMM (1),d4	;| and adjust exponent
++#endif
++	btst	IMM (20),d0	;|
++	bne	Lmuldf1        ;|
++	bra	1b
++
++Lmuldfbden:
++	move.l	IMM (1),d5
++	and.l	d6,d2
++1:	add.l	d3,d3		;| shift b left until bit 20 is set
++	addx.l	d2,d2		;|
++#ifndef __mcf5200__
++	sub.w	IMM (1),d5	;| and adjust exponent
++#else
++	subq.l	IMM (1),d5	;| and adjust exponent
++#endif
++	btst	IMM (20),d2	;|
++	bne	Lmuldf2	;|
++	bra	1b
++
++
++;|=============================================================================
++;|                              __divdf3
++;|=============================================================================
++
++;| double __divdf3(double, double);
++SYM (__divdf3):
++#ifndef __mcf5200__
++	link	a6,IMM (0)
++	movem.l	d2-d7,-(sp)
++#else
++	link	a6,IMM (-24)
++	movem.l	d2-d7,(sp)
++#endif
++	move.l	8(a6),d0	;| get a into d0-d1
++	move.l	12(a6),d1	;| 
++	move.l	16(a6),d2	;| and b into d2-d3
++	move.l	20(a6),d3	;|
++	move.l	d0,d7		;| d7 will hold the sign of the result
++	eor.l	d2,d7		;|
++	and.l	IMM (0x80000000),d7
++	move.l	d7,a0		;| save sign into a0
++	move.l	IMM (0x7ff00000),d7 ;| useful constant (+INFINITY)
++	move.l	d7,d6		;| another (mask for fraction)
++	not.l	d6		;|
++	bclr	IMM (31),d0	;| get rid of a's sign bit '
++	move.l	d0,d4		;|
++	or.l	d1,d4		;|
++	beq	Ldivdfa0	;| branch if a is zero
++	move.l	d0,d4		;|
++	bclr	IMM (31),d2	;| get rid of b's sign bit '
++	move.l	d2,d5		;|
++	or.l	d3,d5		;|
++	beq	Ldivdfb0	;| branch if b is zero
++	move.l	d2,d5
++	cmp.l	d7,d0		;| is a big?
++	bhi	Ldivdfinop	;| if a is NaN return NaN
++	beq	Ldivdfanf	;| if d0 == 0x7ff00000 we check d1
++	cmp.l	d7,d2		;| now compare b with INFINITY 
++	bhi	Ldivdfinop	;| if b is NaN return NaN
++	beq	Ldivdfbnf	;| if d2 == 0x7ff00000 we check d3
++;| Here we have both numbers finite and nonzero (and with no sign bit).
++;| Now we get the exponents into d4 and d5 and normalize the numbers to
++;| ensure that the ratio of the fractions is around 1. We do this by
++;| making sure that both numbers have bit #DBL_MANT_DIG-32-1 (hidden bit)
++;| set, even if they were denormalized to start with.
++;| Thus, the result will satisfy: 2 > result > 1/2.
++	and.l	d7,d4		;| and isolate exponent in d4
++	beq	Ldivdfaden	;| if exponent is zero we have a denormalized
++	and.l	d6,d0		;| and isolate fraction
++	or.l	IMM (0x00100000),d0 ;| and put hidden bit back
++	swap	d4		;| I like exponents in the first byte
++#ifndef __mcf5200__
++	lsr.w	IMM (4),d4	;| 
++#else
++	lsr.l	IMM (4),d4	;| 
++#endif
++Ldivdf1:			;| 
++	and.l	d7,d5		;|
++	beq	Ldivdfbden	;|
++	and.l	d6,d2		;|
++	or.l	IMM (0x00100000),d2
++	swap	d5		;|
++#ifndef __mcf5200__
++	lsr.w	IMM (4),d5	;|
++#else
++	lsr.l	IMM (4),d5	;|
++#endif
++Ldivdf2:			;|
++#ifndef __mcf5200__
++	sub.w	d5,d4		;| subtract exponents
++	add.w	IMM (D_BIAS),d4	;| and add bias
++#else
++	sub.l	d5,d4		;| subtract exponents
++	add.l	IMM (D_BIAS),d4	;| and add bias
++#endif
++
++;| We are now ready to do the division. We have prepared things in such a way
++;| that the ratio of the fractions will be less than 2 but greater than 1/2.
++;| At this point the registers in use are:
++;| d0-d1	hold a (first operand, bit DBL_MANT_DIG-32=0, bit 
++;| DBL_MANT_DIG-1-32=1)
++;| d2-d3	hold b (second operand, bit DBL_MANT_DIG-32=1)
++;| d4	holds the difference of the exponents, corrected by the bias
++;| a0	holds the sign of the ratio
++
++;| To do the rounding correctly we need to keep information about the
++;| nonsignificant bits. One way to do this would be to do the division
++;| using four registers; another is to use two registers (as originally
++;| I did), but use a sticky bit to preserve information about the 
++;| fractional part. Note that we can keep that info in a1, which is not
++;| used.
++	move.l	IMM (0),d6	;| d6-d7 will hold the result
++	move.l	d6,d7		;| 
++	move.l	IMM (0),a1	;| and a1 will hold the sticky bit
++
++	move.l	IMM (DBL_MANT_DIG-32+1),d5	
++	
++1:	cmp.l	d0,d2		;| is a < b?
++	bhi	3f		;| if b > a skip the following
++	beq	4f		;| if d0==d2 check d1 and d3
++2:	sub.l	d3,d1		;| 
++	subx.l	d2,d0		;| a <-- a - b
++	bset	d5,d6		;| set the corresponding bit in d6
++3:	add.l	d1,d1		;| shift a by 1
++	addx.l	d0,d0		;|
++#ifndef __mcf5200__
++	dbra	d5,1b		;| and branch back
++#else
++	subq.l	IMM (1),d5
++	bpl	1b
++#endif
++	bra	5f			
++4:	cmp.l	d1,d3		;| here d0==d2, so check d1 and d3
++	bhi	3b		;| if d1 > d2 skip the subtraction
++	bra	2b		;| else go do it
++5:
++;| Here we have to start setting the bits in the second long.
++	move.l	IMM (31),d5	;| again d5 is counter
++
++1:	cmp.l	d0,d2		;| is a < b?
++	bhi	3f		;| if b > a skip the following
++	beq	4f		;| if d0==d2 check d1 and d3
++2:	sub.l	d3,d1		;| 
++	subx.l	d2,d0		;| a <-- a - b
++	bset	d5,d7		;| set the corresponding bit in d7
++3:	add.l	d1,d1		;| shift a by 1
++	addx.l	d0,d0		;|
++#ifndef __mcf5200__
++	dbra	d5,1b		;| and branch back
++#else
++	subq.l	IMM (1),d5
++	bpl	1b
++#endif
++	bra	5f			
++4:	cmp.l	d1,d3		;| here d0==d2, so check d1 and d3
++	bhi	3b		;| if d1 > d2 skip the subtraction
++	bra	2b		;| else go do it
++5:
++;| Now go ahead checking until we hit a one, which we store in d2.
++	move.l	IMM (DBL_MANT_DIG),d5
++1:	cmp.l	d2,d0		;| is a < b?
++	bhi	4f		;| if b < a, exit
++	beq	3f		;| if d0==d2 check d1 and d3
++2:	add.l	d1,d1		;| shift a by 1
++	addx.l	d0,d0		;|
++#ifndef __mcf5200__
++	dbra	d5,1b		;| and branch back
++#else
++	subq.l	IMM (1),d5
++	bpl	1b
++#endif
++	move.l	IMM (0),d2	;| here no sticky bit was found
++	move.l	d2,d3
++	bra	5f			
++3:	cmp.l	d1,d3		;| here d0==d2, so check d1 and d3
++	bhi	2b		;| if d1 > d2 go back
++4:
++;| Here put the sticky bit in d2-d3 (in the position which actually corresponds
++;| to it; if you don't do this the algorithm loses in some cases). '
++	move.l	IMM (0),d2
++	move.l	d2,d3
++#ifndef __mcf5200__
++	sub.w	IMM (DBL_MANT_DIG),d5
++	add.w	IMM (63),d5
++	cmp.w	IMM (31),d5
++#else
++	sub.l	IMM (DBL_MANT_DIG),d5
++	add.l	IMM (63),d5
++	cmp.l	IMM (31),d5
++#endif
++	bhi	2f
++1:	bset	d5,d3
++	bra	5f
++#ifndef __mcf5200__
++	sub.w	IMM (32),d5
++#else
++	sub.l	IMM (32),d5
++#endif
++2:	bset	d5,d2
++5:
++;| Finally we are finished! Move the longs in the address registers to
++;| their final destination:
++	move.l	d6,d0
++	move.l	d7,d1
++	move.l	IMM (0),d3
++
++;| Here we have finished the division, with the result in d0-d1-d2-d3, with
++;| 2^21 <= d6 < 2^23. Thus bit 23 is not set, but bit 22 could be set.
++;| If it is not, then definitely bit 21 is set. Normalize so bit 22 is
++;| not set:
++	btst	IMM (DBL_MANT_DIG-32+1),d0
++	beq	1f
++#ifndef __mcf5200__
++	lsr.l	IMM (1),d0
++	roxr.l	IMM (1),d1
++	roxr.l	IMM (1),d2
++	roxr.l	IMM (1),d3
++	add.w	IMM (1),d4
++#else
++	lsr.l	IMM (1),d3
++	btst	IMM (0),d2
++	beq	10f
++	bset	IMM (31),d3
++10:	lsr.l	IMM (1),d2
++	btst	IMM (0),d1
++	beq	11f
++	bset	IMM (31),d2
++11:	lsr.l	IMM (1),d1
++	btst	IMM (0),d0
++	beq	12f
++	bset	IMM (31),d1
++12:	lsr.l	IMM (1),d0
++	add.l	IMM (1),d4
++#endif
++1:
++;| Now round, check for over- and underflow, and exit.
++	move.l	a0,d7		;| restore sign bit to d7
++	move.w	IMM (DIVIDE),d5
++	bra	Lroundexit
++
++Ldivdfinop:
++	move.w	IMM (DIVIDE),d5
++	bra	Ldinop
++
++Ldivdfa0:
++;| If a is zero check to see whether b is zero also. In that case return
++;| NaN; then check if b is NaN, and return NaN also in that case. Else
++;| return zero.
++	move.w	IMM (DIVIDE),d5
++	bclr	IMM (31),d2	;|
++	move.l	d2,d4		;| 
++	or.l	d3,d4		;| 
++	beq	Ldinop		;| if b is also zero return NaN
++	cmp.l	IMM (0x7ff00000),d2 ;| check for NaN
++	bhi	Ldinop		;| 
++	blt	1f		;|
++	tst.l	d3		;|
++	bne	Ldinop		;|
++1:	move.l	IMM (0),d0	;| else return zero
++	move.l	d0,d1		;| 
++	lea	SYM (_fpCCR),a0	;| clear exception flags
++	move.w	IMM (0),(a0)	;|
++#ifndef __mcf5200__
++	movem.l	(sp)+,d2-d7	;| 
++#else
++	movem.l	(sp),d2-d7	;| 
++	;| XXX if frame pointer is ever removed, stack pointer must
++	;| be adjusted here.
++#endif
++	unlk	a6		;| 
++	rts			;| 	
++
++Ldivdfb0:
++	move.w	IMM (DIVIDE),d5
++;| If we got here a is not zero. Check if a is NaN; in that case return NaN,
++;| else return +/-INFINITY. Remember that a is in d0 with the sign bit 
++;| cleared already.
++	move.l	a0,d7		;| put a's sign bit back in d7 '
++	cmp.l	IMM (0x7ff00000),d0 ;| compare d0 with INFINITY
++	bhi	Ldinop		;| if larger it is NaN
++	tst.l	d1		;| 
++	bne	Ldinop		;| 
++	bra	Lddiv0	;| else signal DIVIDE_BY_ZERO
++
++Ldivdfbnf:
++	move.w	IMM (DIVIDE),d5
++;| If d2 == 0x7ff00000 we have to check d3.
++	tst.l	d3		;|
++	bne	Ldinop		;| if d3 <> 0, b is NaN
++	bra	Ldunderflow	;| else b is +/-INFINITY, so signal underflow
++
++Ldivdfanf:
++	move.w	IMM (DIVIDE),d5
++;| If d0 == 0x7ff00000 we have to check d1.
++	tst.l	d1		;|
++	bne	Ldinop		;| if d1 <> 0, a is NaN
++;| If a is INFINITY we have to check b
++	cmp.l	d7,d2		;| compare b with INFINITY 
++	bge	Ldinop		;| if b is NaN or INFINITY return NaN
++	tst.l	d3		;|
++	bne	Ldinop		;| 
++	bra	Ldoverflow	;| else return overflow
++
++;| If a number is denormalized we put an exponent of 1 but do not put the 
++;| bit back into the fraction.
++Ldivdfaden:
++	move.l	IMM (1),d4
++	and.l	d6,d0
++1:	add.l	d1,d1		;| shift a left until bit 20 is set
++	addx.l	d0,d0
++#ifndef __mcf5200__
++	sub.w	IMM (1),d4	;| and adjust exponent
++#else
++	sub.l	IMM (1),d4	;| and adjust exponent
++#endif
++	btst	IMM (DBL_MANT_DIG-32-1),d0
++	bne	Ldivdf1
++	bra	1b
++
++Ldivdfbden:
++	move.l	IMM (1),d5
++	and.l	d6,d2
++1:	add.l	d3,d3		;| shift b left until bit 20 is set
++	addx.l	d2,d2
++#ifndef __mcf5200__
++	sub.w	IMM (1),d5	;| and adjust exponent
++#else
++	subq.l	IMM (1),d5	;| and adjust exponent
++#endif
++	btst	IMM (DBL_MANT_DIG-32-1),d2
++	bne	Ldivdf2
++	bra	1b
++
++Lroundexit:
++;| This is a common exit point for __muldf3 and __divdf3. When they enter
++;| this point the sign of the result is in d7, the result in d0-d1, normalized
++;| so that 2^21 <= d0 < 2^22, and the exponent is in the lower byte of d4.
++
++;| First check for underlow in the exponent:
++#ifndef __mcf5200__
++	cmp.w	IMM (-DBL_MANT_DIG-1),d4		
++#else
++	cmp.l	IMM (-DBL_MANT_DIG-1),d4		
++#endif
++	blt	Ldunderflow	
++;| It could happen that the exponent is less than 1, in which case the 
++;| number is denormalized. In this case we shift right and adjust the 
++;| exponent until it becomes 1 or the fraction is zero (in the latter case 
++;| we signal underflow and return zero).
++	move.l	d7,a0		;|
++	move.l	IMM (0),d6	;| use d6-d7 to collect bits flushed right
++	move.l	d6,d7		;| use d6-d7 to collect bits flushed right
++#ifndef __mcf5200__
++	cmp.w	IMM (1),d4	;| if the exponent is less than 1 we 
++#else
++	cmp.l	IMM (1),d4	;| if the exponent is less than 1 we 
++#endif
++	bge	2f		;| have to shift right (denormalize)
++1:
++#ifndef __mcf5200__
++	add.w	IMM (1),d4	;| adjust the exponent
++	lsr.l	IMM (1),d0	;| shift right once 
++	roxr.l	IMM (1),d1	;|
++	roxr.l	IMM (1),d2	;|
++	roxr.l	IMM (1),d3	;|
++	roxr.l	IMM (1),d6	;| 
++	roxr.l	IMM (1),d7	;|
++	cmp.w	IMM (1),d4	;| is the exponent 1 already?
++#else
++	add.l	IMM (1),d4	;| adjust the exponent
++	lsr.l	IMM (1),d7
++	btst	IMM (0),d6
++	beq	13f
++	bset	IMM (31),d7
++13:	lsr.l	IMM (1),d6
++	btst	IMM (0),d3
++	beq	14f
++	bset	IMM (31),d6
++14:	lsr.l	IMM (1),d3
++	btst	IMM (0),d2
++	beq	10f
++	bset	IMM (31),d3
++10:	lsr.l	IMM (1),d2
++	btst	IMM (0),d1
++	beq	11f
++	bset	IMM (31),d2
++11:	lsr.l	IMM (1),d1
++	btst	IMM (0),d0
++	beq	12f
++	bset	IMM (31),d1
++12:	lsr.l	IMM (1),d0
++	cmp.l	IMM (1),d4	;| is the exponent 1 already?
++#endif
++	beq	2f		;| if not loop back
++	bra	1b              ;|
++	bra	Ldunderflow	;| safety check, shouldn't execute '
++2:	or.l	d6,d2		;| this is a trick so we don't lose  '
++	or.l	d7,d3		;| the bits which were flushed right
++	move.l	a0,d7		;| get back sign bit into d7
++;| Now call the rounding routine (which takes care of denormalized numbers):
++	lea	Lround0,a0	;| to return from rounding routine
++	lea	SYM (_fpCCR),a1	;| check the rounding mode
++#ifdef __mcf5200__
++	clr.l	d6
++#endif
++	move.w	6(a1),d6	;| rounding mode in d6
++	beq	Lroundtonearest
++#ifndef __mcf5200__
++	cmp.w	IMM (ROUND_TO_PLUS),d6
++#else
++	cmp.l	IMM (ROUND_TO_PLUS),d6
++#endif
++	bhi	Lroundtominus
++	blt	Lroundtozero
++	bra	Lroundtoplus
++Lround0:
++;| Here we have a correctly rounded result (either normalized or denormalized).
++
++;| Here we should have either a normalized number or a denormalized one, and
++;| the exponent is necessarily larger or equal to 1 (so we don't have to  '
++;| check again for underflow!). We have to check for overflow or for a 
++;| denormalized number (which also signals underflow).
++;| Check for overflow (i.e., exponent >= 0x7ff).
++#ifndef __mcf5200__
++	cmp.w	IMM (0x07ff),d4
++#else
++	cmp.l	IMM (0x07ff),d4
++#endif
++	bge	Ldoverflow
++;| Now check for a denormalized number (exponent==0):
++	move.w	d4,d4
++	beq	Ldden
++1:
++;| Put back the exponents and sign and return.
++#ifndef __mcf5200__
++	lsl.w	IMM (4),d4	;| exponent back to fourth byte
++#else
++	lsl.l	IMM (4),d4	;| exponent back to fourth byte
++#endif
++	bclr	IMM (DBL_MANT_DIG-32-1),d0
++	swap	d0		;| and put back exponent
++#ifndef __mcf5200__
++	or.w	d4,d0		;| 
++#else
++	or.l	d4,d0		;| 
++#endif
++	swap	d0		;|
++	or.l	d7,d0		;| and sign also
++
++	lea	SYM (_fpCCR),a0
++	move.w	IMM (0),(a0)
++#ifndef __mcf5200__
++	movem.l	(sp)+,d2-d7
++#else
++	movem.l	(sp),d2-d7
++	;| XXX if frame pointer is ever removed, stack pointer must
++	;| be adjusted here.
++#endif
++	unlk	a6
++	rts
++
++;|=============================================================================
++;|                              __negdf2
++;|=============================================================================
++
++;| double __negdf2(double, double);
++SYM (__negdf2):
++#ifndef __mcf5200__
++	link	a6,IMM (0)
++	movem.l	d2-d7,-(sp)
++#else
++	link	a6,IMM (-24)
++	movem.l	d2-d7,(sp)
++#endif
++	move.w	IMM (NEGATE),d5
++	move.l	8(a6),d0	;| get number to negate in d0-d1
++	move.l	12(a6),d1	;|
++	bchg	IMM (31),d0	;| negate
++	move.l	d0,d2		;| make a positive copy (for the tests)
++	bclr	IMM (31),d2	;|
++	move.l	d2,d4		;| check for zero
++	or.l	d1,d4		;|
++	beq	2f		;| if zero (either sign) return +zero
++	cmp.l	IMM (0x7ff00000),d2 ;| compare to +INFINITY
++	blt	1f		;| if finite, return
++	bhi	Ldinop		;| if larger (fraction not zero) is NaN
++	tst.l	d1		;| if d2 == 0x7ff00000 check d1
++	bne	Ldinop		;|
++	move.l	d0,d7		;| else get sign and return INFINITY
++	and.l	IMM (0x80000000),d7
++	bra	Ldinfty		
++1:	lea	SYM (_fpCCR),a0
++	move.w	IMM (0),(a0)
++#ifndef __mcf5200__
++	movem.l	(sp)+,d2-d7
++#else
++	movem.l	(sp),d2-d7
++	;| XXX if frame pointer is ever removed, stack pointer must
++	;| be adjusted here.
++#endif
++	unlk	a6
++	rts
++2:	bclr	IMM (31),d0
++	bra	1b
++
++;|=============================================================================
++;|                              __cmpdf2
++;|=============================================================================
++
++GREATER =  1
++LESS    = -1
++EQUAL   =  0
++
++;| int __cmpdf2(double, double);
++SYM (__cmpdf2):
++#ifndef __mcf5200__
++	link	a6,IMM (0)
++	movem.l	d2-d7,-(sp) 	;| save registers
++#else
++	link	a6,IMM (-24)
++	movem.l	d2-d7,(sp)
++#endif
++	move.w	IMM (COMPARE),d5
++	move.l	8(a6),d0	;| get first operand
++	move.l	12(a6),d1	;|
++	move.l	16(a6),d2	;| get second operand
++	move.l	20(a6),d3	;|
++;| First check if a and/or b are (+/-) zero and in that case clear
++;| the sign bit.
++	move.l	d0,d6		;| copy signs into d6 (a) and d7(b)
++	bclr	IMM (31),d0	;| and clear signs in d0 and d2
++	move.l	d2,d7		;|
++	bclr	IMM (31),d2	;|
++	cmp.l	IMM (0x7fff0000),d0 ;| check for a == NaN
++	bhi	Ldinop		;| if d0 > 0x7ff00000, a is NaN
++	beq	Lcmpdfanf	;| if equal can be INFINITY, so check d1
++	move.l	d0,d4		;| copy into d4 to test for zero
++	or.l	d1,d4		;|
++	beq	Lcmpdfa0	;|
++Lcmpdf0:
++	cmp.l	IMM (0x7fff0000),d2 ;| check for b == NaN
++	bhi	Ldinop		;| if d2 > 0x7ff00000, b is NaN
++	beq	Lcmpdfbnf	;| if equal can be INFINITY, so check d3
++	move.l	d2,d4		;|
++	or.l	d3,d4		;|
++	beq	Lcmpdfb0	;|
++Lcmpdf1:
++;| Check the signs
++	eor.l	d6,d7
++	bpl	1f
++;| If the signs are not equal check if a >= 0
++	tst.l	d6
++	bpl	Lcmpdfagtb	;| if (a >= 0 && b < 0) => a > b
++	bmi	Lcmpdfbgta	;| if (a < 0 && b >= 0) => a < b
++1:
++;| If the signs are equal check for < 0
++	tst.l	d6
++	bpl	1f
++;| If both are negative exchange them
++#ifndef __mcf5200__
++	exg	d0,d2
++	exg	d1,d3
++#else
++	move.l	d0,d7
++	move.l	d2,d0
++	move.l	d7,d2
++	move.l	d1,d7
++	move.l	d3,d1
++	move.l	d7,d3
++#endif
++1:
++;| Now that they are positive we just compare them as longs (does this also
++;| work for denormalized numbers?).
++	cmp.l	d0,d2
++	bhi	Lcmpdfbgta	;| ;|b;| > ;|a;|
++	bne	Lcmpdfagtb	;| ;|b;| < ;|a;|
++;| If we got here d0 == d2, so we compare d1 and d3.
++	cmp.l	d1,d3
++	bhi	Lcmpdfbgta	;| ;|b;| > ;|a;|
++	bne	Lcmpdfagtb	;| ;|b;| < ;|a;|
++;| If we got here a == b.
++	move.l	IMM (EQUAL),d0
++#ifndef __mcf5200__
++	movem.l	(sp)+,d2-d7 	;| put back the registers
++#else
++	movem.l	(sp),d2-d7
++	;| XXX if frame pointer is ever removed, stack pointer must
++	;| be adjusted here.
++#endif
++	unlk	a6
++	rts
++Lcmpdfagtb:
++	move.l	IMM (GREATER),d0
++#ifndef __mcf5200__
++	movem.l	(sp)+,d2-d7 	;| put back the registers
++#else
++	movem.l	(sp),d2-d7
++	;| XXX if frame pointer is ever removed, stack pointer must
++	;| be adjusted here.
++#endif
++	unlk	a6
++	rts
++Lcmpdfbgta:
++	move.l	IMM (LESS),d0
++#ifndef __mcf5200__
++	movem.l	(sp)+,d2-d7 	;| put back the registers
++#else
++	movem.l	(sp),d2-d7
++	;| XXX if frame pointer is ever removed, stack pointer must
++	;| be adjusted here.
++#endif
++	unlk	a6
++	rts
++
++Lcmpdfa0:	
++	bclr	IMM (31),d6
++	bra	Lcmpdf0
++Lcmpdfb0:
++	bclr	IMM (31),d7
++	bra	Lcmpdf1
++
++Lcmpdfanf:
++	tst.l	d1
++	bne	Ldinop
++	bra	Lcmpdf0
++
++Lcmpdfbnf:
++	tst.l	d3
++	bne	Ldinop
++	bra	Lcmpdf1
++
++;|=============================================================================
++;|                           rounding routines
++;|=============================================================================
++
++;| The rounding routines expect the number to be normalized in registers
++;| d0-d1-d2-d3, with the exponent in register d4. They assume that the 
++;| exponent is larger or equal to 1. They return a properly normalized number
++;| if possible, and a denormalized number otherwise. The exponent is returned
++;| in d4.
++
++Lroundtonearest:
++;| We now normalize as suggested by D. Knuth ("Seminumerical Algorithms"):
++;| Here we assume that the exponent is not too small (this should be checked
++;| before entering the rounding routine), but the number could be denormalized.
++
++;| Check for denormalized numbers:
++1:	btst	IMM (DBL_MANT_DIG-32),d0
++	bne	2f		;| if set the number is normalized
++;| Normalize shifting left until bit #DBL_MANT_DIG-32 is set or the exponent 
++;| is one (remember that a denormalized number corresponds to an 
++;| exponent of -D_BIAS+1).
++#ifndef __mcf5200__
++	cmp.w	IMM (1),d4	;| remember that the exponent is at least one
++#else
++	cmp.l	IMM (1),d4	;| remember that the exponent is at least one
++#endif
++ 	beq	2f		;| an exponent of one means denormalized
++	add.l	d3,d3		;| else shift and adjust the exponent
++	addx.l	d2,d2		;|
++	addx.l	d1,d1		;|
++	addx.l	d0,d0		;|
++#ifndef __mcf5200__
++	dbra	d4,1b		;|
++#else
++	subq.l	IMM (1),d4
++	bpl	1b
++#endif
++2:
++;| Now round: we do it as follows: after the shifting we can write the
++;| fraction part as f + delta, where 1 < f < 2^25, and 0 <= delta <= 2.
++;| If delta < 1, do nothing. If delta > 1, add 1 to f. 
++;| If delta == 1, we make sure the rounded number will be even (odd?) 
++;| (after shifting).
++	btst	IMM (0),d1	;| is delta < 1?
++	beq	2f		;| if so, do not do anything
++	or.l	d2,d3		;| is delta == 1?
++	bne	1f		;| if so round to even
++	move.l	d1,d3		;| 
++	and.l	IMM (2),d3	;| bit 1 is the last significant bit
++	move.l	IMM (0),d2	;|
++	add.l	d3,d1		;|
++	addx.l	d2,d0		;|
++	bra	2f		;| 
++1:	move.l	IMM (1),d3	;| else add 1 
++	move.l	IMM (0),d2	;|
++	add.l	d3,d1		;|
++	addx.l	d2,d0
++;| Shift right once (because we used bit #DBL_MANT_DIG-32!).
++2:
++#ifndef __mcf5200__
++	lsr.l	IMM (1),d0
++	roxr.l	IMM (1),d1		
++#else
++	lsr.l	IMM (1),d1
++	btst	IMM (0),d0
++	beq	10f
++	bset	IMM (31),d1
++10:	lsr.l	IMM (1),d0
++#endif
++
++;| Now check again bit #DBL_MANT_DIG-32 (rounding could have produced a
++;| 'fraction overflow' ...).
++	btst	IMM (DBL_MANT_DIG-32),d0	
++	beq	1f
++#ifndef __mcf5200__
++	lsr.l	IMM (1),d0
++	roxr.l	IMM (1),d1
++	add.w	IMM (1),d4
++#else
++	lsr.l	IMM (1),d1
++	btst	IMM (0),d0
++	beq	10f
++	bset	IMM (31),d1
++10:	lsr.l	IMM (1),d0
++	add.l	IMM (1),d4
++#endif
++1:
++;| If bit #DBL_MANT_DIG-32-1 is clear we have a denormalized number, so we 
++;| have to put the exponent to zero and return a denormalized number.
++	btst	IMM (DBL_MANT_DIG-32-1),d0
++	beq	1f
++	jmp	(a0)
++1:	move.l	IMM (0),d4
++	jmp	(a0)
++
++Lroundtozero:
++Lroundtoplus:
++Lroundtominus:
++	jmp	(a0)
++#endif /* L_double */
++
++#ifdef  L_float
++
++	.globl	SYM (_fpCCR)
++	.globl  _exception_handler
++
++QUIET_NaN    = 0xffffffff
++SIGNL_NaN    = 0x7f800001
++INFINITY     = 0x7f800000
++
++F_MAX_EXP      = 0xff
++F_BIAS         = 126
++FLT_MAX_EXP    = F_MAX_EXP - F_BIAS
++FLT_MIN_EXP    = 1 - F_BIAS
++FLT_MANT_DIG   = 24
++
++INEXACT_RESULT 		= 0x0001
++UNDERFLOW 		= 0x0002
++OVERFLOW 		= 0x0004
++DIVIDE_BY_ZERO 		= 0x0008
++INVALID_OPERATION 	= 0x0010
++
++SINGLE_FLOAT = 1
++
++NOOP         = 0
++ADD          = 1
++MULTIPLY     = 2
++DIVIDE       = 3
++NEGATE       = 4
++COMPARE      = 5
++EXTENDSFDF   = 6
++TRUNCDFSF    = 7
++
++UNKNOWN           = -1
++ROUND_TO_NEAREST  = 0 ;| round result to nearest representable value
++ROUND_TO_ZERO     = 1 ;| round result towards zero
++ROUND_TO_PLUS     = 2 ;| round result towards plus infinity
++ROUND_TO_MINUS    = 3 ;| round result towards minus infinity
++
++;| Entry points:
++
++	.globl SYM (__addsf3)
++	.globl SYM (__subsf3)
++	.globl SYM (__mulsf3)
++	.globl SYM (__divsf3)
++	.globl SYM (__negsf2)
++	.globl SYM (__cmpsf2)
++
++;| These are common routines to return and signal exceptions.	
++
++	.text
++	.even
++
++Lfden:
++;| Return and signal a denormalized number
++	or.l	d7,d0
++	move.w	IMM (INEXACT_RESULT+UNDERFLOW),d7
++	moveq	IMM (SINGLE_FLOAT),d6
++	jmp	_exception_handler
++
++Lfinfty:
++Lfoverflow:
++;| Return a properly signed INFINITY and set the exception flags 
++	move.l	IMM (INFINITY),d0
++	or.l	d7,d0
++	move.w	IMM (INEXACT_RESULT+OVERFLOW),d7
++	moveq	IMM (SINGLE_FLOAT),d6
++	jmp	_exception_handler
++
++Lfunderflow:
++;| Return 0 and set the exception flags 
++	move.l	IMM (0),d0
++	move.w	IMM (INEXACT_RESULT+UNDERFLOW),d7
++	moveq	IMM (SINGLE_FLOAT),d6
++	jmp	_exception_handler
++
++Lfinop:
++;| Return a quiet NaN and set the exception flags
++	move.l	IMM (QUIET_NaN),d0
++	move.w	IMM (INEXACT_RESULT+INVALID_OPERATION),d7
++	moveq	IMM (SINGLE_FLOAT),d6
++	jmp	_exception_handler
++
++Lfdiv0:
++;| Return a properly signed INFINITY and set the exception flags
++	move.l	IMM (INFINITY),d0
++	or.l	d7,d0
++	move.w	IMM (INEXACT_RESULT+DIVIDE_BY_ZERO),d7
++	moveq	IMM (SINGLE_FLOAT),d6
++	jmp	_exception_handler
++
++;|=============================================================================
++;|=============================================================================
++;|                         single precision routines
++;|=============================================================================
++;|=============================================================================
++
++;| A single precision floating point number (float) has the format:
++;|
++;| struct _float {
++;|  unsigned int sign      : 1;  /* sign bit */ 
++;|  unsigned int exponent  : 8;  /* exponent, shifted by 126 */
++;|  unsigned int fraction  : 23; /* fraction */
++;| } float;
++;| 
++;| Thus sizeof(float) = 4 (32 bits). 
++;|
++;| All the routines are callable from C programs, and return the result 
++;| in the single register d0. They also preserve all registers except 
++;| d0-d1 and a0-a1.
++
++;|=============================================================================
++;|                              __subsf3
++;|=============================================================================
++
++;| float __subsf3(float, float);
++SYM (__subsf3):
++	bchg	IMM (31),8(sp)	;| change sign of second operand
++				;| and fall through
++;|=============================================================================
++;|                              __addsf3
++;|=============================================================================
++
++;| float __addsf3(float, float);
++SYM (__addsf3):
++#ifndef __mcf5200__
++	link	a6,IMM (0)	;| everything will be done in registers
++	movem.l	d2-d7,-(sp)	;| save all data registers but d0-d1
++#else
++	link	a6,IMM (-24)
++	movem.l	d2-d7,(sp)
++#endif
++	move.l	8(a6),d0	;| get first operand
++	move.l	12(a6),d1	;| get second operand
++	move.l	d0,d6		;| get d0's sign bit '
++	add.l	d0,d0		;| check and clear sign bit of a
++	beq	Laddsfb	;| if zero return second operand
++	move.l	d1,d7		;| save b's sign bit '
++	add.l	d1,d1		;| get rid of sign bit
++	beq	Laddsfa	;| if zero return first operand
++
++	move.l	d6,a0		;| save signs in address registers
++	move.l	d7,a1		;| so we can use d6 and d7
++
++;| Get the exponents and check for denormalized and/or infinity.
++
++	move.l	IMM (0x00ffffff),d4	;| mask to get fraction
++	move.l	IMM (0x01000000),d5	;| mask to put hidden bit back
++
++	move.l	d0,d6		;| save a to get exponent
++	and.l	d4,d0		;| get fraction in d0
++	not.l 	d4		;| make d4 into a mask for the exponent
++	and.l	d4,d6		;| get exponent in d6
++	beq	Laddsfaden	;| branch if a is denormalized
++	cmp.l	d4,d6		;| check for INFINITY or NaN
++	beq	Laddsfnf
++	swap	d6		;| put exponent into first word
++	or.l	d5,d0		;| and put hidden bit back
++Laddsf1:
++;| Now we have a's exponent in d6 (second byte) and the mantissa in d0. '
++	move.l	d1,d7		;| get exponent in d7
++	and.l	d4,d7		;| 
++	beq	Laddsfbden	;| branch if b is denormalized
++	cmp.l	d4,d7		;| check for INFINITY or NaN
++	beq	Laddsfnf
++	swap	d7		;| put exponent into first word
++	not.l 	d4		;| make d4 into a mask for the fraction
++	and.l	d4,d1		;| get fraction in d1
++	or.l	d5,d1		;| and put hidden bit back
++Laddsf2:
++;| Now we have b's exponent in d7 (second byte) and the mantissa in d1. '
++
++;| Note that the hidden bit corresponds to bit #FLT_MANT_DIG-1, and we 
++;| shifted right once, so bit #FLT_MANT_DIG is set (so we have one extra
++;| bit).
++
++	move.l	d1,d2		;| move b to d2, since we want to use
++				;| two registers to do the sum
++	move.l	IMM (0),d1	;| and clear the new ones
++	move.l	d1,d3		;|
++
++;| Here we shift the numbers in registers d0 and d1 so the exponents are the
++;| same, and put the largest exponent in d6. Note that we are using two
++;| registers for each number (see the discussion by D. Knuth in "Seminumerical 
++;| Algorithms").
++#ifndef __mcf5200__
++	cmp.w	d6,d7		;| compare exponents
++#else
++	cmp.l	d6,d7		;| compare exponents
++#endif
++	beq	Laddsf3	;| if equal don't shift '
++	bhi	5f		;| branch if second exponent largest
++1:
++	sub.l	d6,d7		;| keep the largest exponent
++	neg.l	d7
++#ifndef __mcf5200__
++	lsr.w	IMM (8),d7	;| put difference in lower byte
++#else
++	lsr.l	IMM (8),d7	;| put difference in lower byte
++#endif
++;| if difference is too large we don't shift (actually, we can just exit) '
++#ifndef __mcf5200__
++	cmp.w	IMM (FLT_MANT_DIG+2),d7		
++#else
++	cmp.l	IMM (FLT_MANT_DIG+2),d7		
++#endif
++	bge	Laddsfbsmall
++#ifndef __mcf5200__
++	cmp.w	IMM (16),d7	;| if difference >= 16 swap
++#else
++	cmp.l	IMM (16),d7	;| if difference >= 16 swap
++#endif
++	bge	4f
++2:
++#ifndef __mcf5200__
++	sub.w	IMM (1),d7
++#else
++	subq.l	IMM (1),d7
++#endif
++3:
++#ifndef __mcf5200__
++	lsr.l	IMM (1),d2	;| shift right second operand
++	roxr.l	IMM (1),d3
++	dbra	d7,3b
++#else
++	lsr.l	IMM (1),d3
++	btst	IMM (0),d2
++	beq	10f
++	bset	IMM (31),d3
++10:	lsr.l	IMM (1),d2
++	subq.l	IMM (1),d7
++	bpl	3b
++#endif
++	bra	Laddsf3
++4:
++	move.w	d2,d3
++	swap	d3
++	move.w	d3,d2
++	swap	d2
++#ifndef __mcf5200__
++	sub.w	IMM (16),d7
++#else
++	sub.l	IMM (16),d7
++#endif
++	bne	2b		;| if still more bits, go back to normal case
++	bra	Laddsf3
++5:
++#ifndef __mcf5200__
++	exg	d6,d7		;| exchange the exponents
++#else
++	eor.l	d6,d7
++	eor.l	d7,d6
++	eor.l	d6,d7
++#endif
++	sub.l	d6,d7		;| keep the largest exponent
++	neg.l	d7		;|
++#ifndef __mcf5200__
++	lsr.w	IMM (8),d7	;| put difference in lower byte
++#else
++	lsr.l	IMM (8),d7	;| put difference in lower byte
++#endif
++;| if difference is too large we don't shift (and exit!) '
++#ifndef __mcf5200__
++	cmp.w	IMM (FLT_MANT_DIG+2),d7		
++#else
++	cmp.l	IMM (FLT_MANT_DIG+2),d7		
++#endif
++	bge	Laddsfasmall
++#ifndef __mcf5200__
++	cmp.w	IMM (16),d7	;| if difference >= 16 swap
++#else
++	cmp.l	IMM (16),d7	;| if difference >= 16 swap
++#endif
++	bge	8f
++6:
++#ifndef __mcf5200__
++	sub.w	IMM (1),d7
++#else
++	sub.l	IMM (1),d7
++#endif
++7:
++#ifndef __mcf5200__
++	lsr.l	IMM (1),d0	;| shift right first operand
++	roxr.l	IMM (1),d1
++	dbra	d7,7b
++#else
++	lsr.l	IMM (1),d1
++	btst	IMM (0),d0
++	beq	10f
++	bset	IMM (31),d1
++10:	lsr.l	IMM (1),d0
++	subq.l	IMM (1),d7
++	bpl	7b
++#endif
++	bra	Laddsf3
++8:
++	move.w	d0,d1
++	swap	d1
++	move.w	d1,d0
++	swap	d0
++#ifndef __mcf5200__
++	sub.w	IMM (16),d7
++#else
++	sub.l	IMM (16),d7
++#endif
++	bne	6b		;| if still more bits, go back to normal case
++				;| otherwise we fall through
++
++;| Now we have a in d0-d1, b in d2-d3, and the largest exponent in d6 (the
++;| signs are stored in a0 and a1).
++
++Laddsf3:
++;| Here we have to decide whether to add or subtract the numbers
++#ifndef __mcf5200__
++	exg	d6,a0		;| get signs back
++	exg	d7,a1		;| and save the exponents
++#else
++	move.l	d6,d4
++	move.l	a0,d6
++	move.l	d4,a0
++	move.l	d7,d4
++	move.l	a1,d7
++	move.l	d4,a1
++#endif
++	eor.l	d6,d7		;| combine sign bits
++	bmi	Lsubsf0	;| if negative a and b have opposite 
++				;| sign so we actually subtract the
++				;| numbers
++
++;| Here we have both positive or both negative
++#ifndef __mcf5200__
++	exg	d6,a0		;| now we have the exponent in d6
++#else
++	move.l	d6,d4
++	move.l	a0,d6
++	move.l	d4,a0
++#endif
++	move.l	a0,d7		;| and sign in d7
++	and.l	IMM (0x80000000),d7
++;| Here we do the addition.
++	add.l	d3,d1
++	addx.l	d2,d0
++;| Note: now we have d2, d3, d4 and d5 to play with! 
++
++;| Put the exponent, in the first byte, in d2, to use the "standard" rounding
++;| routines:
++	move.l	d6,d2
++#ifndef __mcf5200__
++	lsr.w	IMM (8),d2
++#else
++	lsr.l	IMM (8),d2
++#endif
++
++;| Before rounding normalize so bit #FLT_MANT_DIG is set (we will consider
++;| the case of denormalized numbers in the rounding routine itself).
++;| As in the addition (not in the subtraction!) we could have set 
++;| one more bit we check this:
++	btst	IMM (FLT_MANT_DIG+1),d0	
++	beq	1f
++#ifndef __mcf5200__
++	lsr.l	IMM (1),d0
++	roxr.l	IMM (1),d1
++#else
++	lsr.l	IMM (1),d1
++	btst	IMM (0),d0
++	beq	10f
++	bset	IMM (31),d1
++10:	lsr.l	IMM (1),d0
++#endif
++	add.l	IMM (1),d2
++1:
++	lea	Laddsf4,a0	;| to return from rounding routine
++	lea	SYM (_fpCCR),a1	;| check the rounding mode
++#ifdef __mcf5200__
++	clr.l	d6
++#endif
++	move.w	6(a1),d6	;| rounding mode in d6
++	beq	Lroundtonearest
++#ifndef __mcf5200__
++	cmp.w	IMM (ROUND_TO_PLUS),d6
++#else
++	cmp.l	IMM (ROUND_TO_PLUS),d6
++#endif
++	bhi	Lroundtominus
++	blt	Lroundtozero
++	bra	Lroundtoplus
++Laddsf4:
++;| Put back the exponent, but check for overflow.
++#ifndef __mcf5200__
++	cmp.w	IMM (0xff),d2
++#else
++	cmp.l	IMM (0xff),d2
++#endif
++	bhi	1f
++	bclr	IMM (FLT_MANT_DIG-1),d0
++#ifndef __mcf5200__
++	lsl.w	IMM (7),d2
++#else
++	lsl.l	IMM (7),d2
++#endif
++	swap	d2
++	or.l	d2,d0
++	bra	Laddsfret
++1:
++	move.w	IMM (ADD),d5
++	bra	Lfoverflow
++
++Lsubsf0:
++;| We are here if a > 0 and b < 0 (sign bits cleared).
++;| Here we do the subtraction.
++	move.l	d6,d7		;| put sign in d7
++	and.l	IMM (0x80000000),d7
++
++	sub.l	d3,d1		;| result in d0-d1
++	subx.l	d2,d0		;|
++	beq	Laddsfret	;| if zero just exit
++	bpl	1f		;| if positive skip the following
++	bchg	IMM (31),d7	;| change sign bit in d7
++	neg.l	d1
++	negx.l	d0
++1:
++#ifndef __mcf5200__
++	exg	d2,a0		;| now we have the exponent in d2
++	lsr.w	IMM (8),d2	;| put it in the first byte
++#else
++	move.l	d2,d4
++	move.l	a0,d2
++	move.l	d4,a0
++	lsr.l	IMM (8),d2	;| put it in the first byte
++#endif
++
++;| Now d0-d1 is positive and the sign bit is in d7.
++
++;| Note that we do not have to normalize, since in the subtraction bit
++;| #FLT_MANT_DIG+1 is never set, and denormalized numbers are handled by
++;| the rounding routines themselves.
++	lea	Lsubsf1,a0	;| to return from rounding routine
++	lea	SYM (_fpCCR),a1	;| check the rounding mode
++#ifdef __mcf5200__
++	clr.l	d6
++#endif
++	move.w	6(a1),d6	;| rounding mode in d6
++	beq	Lroundtonearest
++#ifndef __mcf5200__
++	cmp.w	IMM (ROUND_TO_PLUS),d6
++#else
++	cmp.l	IMM (ROUND_TO_PLUS),d6
++#endif
++	bhi	Lroundtominus
++	blt	Lroundtozero
++	bra	Lroundtoplus
++Lsubsf1:
++;| Put back the exponent (we can't have overflow!). '
++	bclr	IMM (FLT_MANT_DIG-1),d0
++#ifndef __mcf5200__
++	lsl.w	IMM (7),d2
++#else
++	lsl.l	IMM (7),d2
++#endif
++	swap	d2
++	or.l	d2,d0
++	bra	Laddsfret
++
++;| If one of the numbers was too small (difference of exponents >= 
++;| FLT_MANT_DIG+2) we return the other (and now we don't have to '
++;| check for finiteness or zero).
++Laddsfasmall:
++	move.l	12(a6),d0
++	lea	SYM (_fpCCR),a0
++	move.w	IMM (0),(a0)
++#ifndef __mcf5200__
++	movem.l	(sp)+,d2-d7	;| restore data registers
++#else
++	movem.l	(sp),d2-d7
++	;| XXX if frame pointer is ever removed, stack pointer must
++	;| be adjusted here.
++#endif
++	unlk	a6		;| and return
++	rts
++
++Laddsfbsmall:
++	move.l	8(a6),d0
++	lea	SYM (_fpCCR),a0
++	move.w	IMM (0),(a0)
++#ifndef __mcf5200__
++	movem.l	(sp)+,d2-d7	;| restore data registers
++#else
++	movem.l	(sp),d2-d7
++	;| XXX if frame pointer is ever removed, stack pointer must
++	;| be adjusted here.
++#endif
++	unlk	a6		;| and return
++	rts
++
++;| If the numbers are denormalized remember to put exponent equal to 1.
++
++Laddsfaden:
++	move.l	d5,d6		;| d5 contains 0x01000000
++	swap	d6
++	bra	Laddsf1
++
++Laddsfbden:
++	move.l	d5,d7
++	swap	d7
++	not.l 	d4		;| make d4 into a mask for the fraction
++				;| (this was not executed after the jump)
++	bra	Laddsf2
++
++;| The rest is mainly code for the different results which can be 
++;| returned (checking always for +/-INFINITY and NaN).
++
++Laddsfb:
++;| Return b (if a is zero).
++	move.l	12(a6),d0
++	bra	1f
++Laddsfa:
++;| Return a (if b is zero).
++	move.l	8(a6),d0
++1:
++	move.w	IMM (ADD),d5
++;| We have to check for NaN and +/-infty.
++	move.l	d0,d7
++	and.l	IMM (0x80000000),d7	;| put sign in d7
++	bclr	IMM (31),d0		;| clear sign
++	cmp.l	IMM (INFINITY),d0	;| check for infty or NaN
++	bge	2f
++	move.l	d0,d0		;| check for zero (we do this because we don't '
++	bne	Laddsfret	;| want to return -0 by mistake
++	bclr	IMM (31),d7	;| if zero be sure to clear sign
++	bra	Laddsfret	;| if everything OK just return
++2:
++;| The value to be returned is either +/-infty or NaN
++	and.l	IMM (0x007fffff),d0	;| check for NaN
++	bne	Lfinop			;| if mantissa not zero is NaN
++	bra	Lfinfty
++
++Laddsfret:
++;| Normal exit (a and b nonzero, result is not NaN nor +/-infty).
++;| We have to clear the exception flags (just the exception type).
++	lea	SYM (_fpCCR),a0
++	move.w	IMM (0),(a0)
++	or.l	d7,d0		;| put sign bit
++#ifndef __mcf5200__
++	movem.l	(sp)+,d2-d7	;| restore data registers
++#else
++	movem.l	(sp),d2-d7
++	;| XXX if frame pointer is ever removed, stack pointer must
++	;| be adjusted here.
++#endif
++	unlk	a6		;| and return
++	rts
++
++Laddsfretden:
++;| Return a denormalized number (for addition we don't signal underflow) '
++	lsr.l	IMM (1),d0	;| remember to shift right back once
++	bra	Laddsfret	;| and return
++
++;| Note: when adding two floats of the same sign if either one is 
++;| NaN we return NaN without regard to whether the other is finite or 
++;| not. When subtracting them (i.e., when adding two numbers of 
++;| opposite signs) things are more complicated: if both are INFINITY 
++;| we return NaN, if only one is INFINITY and the other is NaN we return
++;| NaN, but if it is finite we return INFINITY with the corresponding sign.
++
++Laddsfnf:
++	move.w	IMM (ADD),d5
++;| This could be faster but it is not worth the effort, since it is not
++;| executed very often. We sacrifice speed for clarity here.
++	move.l	8(a6),d0	;| get the numbers back (remember that we
++	move.l	12(a6),d1	;| did some processing already)
++	move.l	IMM (INFINITY),d4 ;| useful constant (INFINITY)
++	move.l	d0,d2		;| save sign bits
++	move.l	d1,d3
++	bclr	IMM (31),d0	;| clear sign bits
++	bclr	IMM (31),d1
++;| We know that one of them is either NaN of +/-INFINITY
++;| Check for NaN (if either one is NaN return NaN)
++	cmp.l	d4,d0		;| check first a (d0)
++	bhi	Lfinop		
++	cmp.l	d4,d1		;| check now b (d1)
++	bhi	Lfinop		
++;| Now comes the check for +/-INFINITY. We know that both are (maybe not
++;| finite) numbers, but we have to check if both are infinite whether we
++;| are adding or subtracting them.
++	eor.l	d3,d2		;| to check sign bits
++	bmi	1f
++	move.l	d0,d7
++	and.l	IMM (0x80000000),d7	;| get (common) sign bit
++	bra	Lfinfty
++1:
++;| We know one (or both) are infinite, so we test for equality between the
++;| two numbers (if they are equal they have to be infinite both, so we
++;| return NaN).
++	cmp.l	d1,d0		;| are both infinite?
++	beq	Lfinop		;| if so return NaN
++
++	move.l	d0,d7
++	and.l	IMM (0x80000000),d7 ;| get a's sign bit '
++	cmp.l	d4,d0		;| test now for infinity
++	beq	Lfinfty	;| if a is INFINITY return with this sign
++	bchg	IMM (31),d7	;| else we know b is INFINITY and has
++	bra	Lfinfty	;| the opposite sign
++
++;|=============================================================================
++;|                             __mulsf3
++;|=============================================================================
++
++;| float __mulsf3(float, float);
++SYM (__mulsf3):
++#ifndef __mcf5200__
++	link	a6,IMM (0)
++	movem.l	d2-d7,-(sp)
++#else
++	link	a6,IMM (-24)
++	movem.l	d2-d7,(sp)
++#endif
++	move.l	8(a6),d0	;| get a into d0
++	move.l	12(a6),d1	;| and b into d1
++	move.l	d0,d7		;| d7 will hold the sign of the product
++	eor.l	d1,d7		;|
++	and.l	IMM (0x80000000),d7
++	move.l	IMM (INFINITY),d6	;| useful constant (+INFINITY)
++	move.l	d6,d5			;| another (mask for fraction)
++	not.l	d5			;|
++	move.l	IMM (0x00800000),d4	;| this is to put hidden bit back
++	bclr	IMM (31),d0		;| get rid of a's sign bit '
++	move.l	d0,d2			;|
++	beq	Lmulsfa0		;| branch if a is zero
++	bclr	IMM (31),d1		;| get rid of b's sign bit '
++	move.l	d1,d3		;|
++	beq	Lmulsfb0	;| branch if b is zero
++	cmp.l	d6,d0		;| is a big?
++	bhi	Lmulsfinop	;| if a is NaN return NaN
++	beq	Lmulsfinf	;| if a is INFINITY we have to check b
++	cmp.l	d6,d1		;| now compare b with INFINITY
++	bhi	Lmulsfinop	;| is b NaN?
++	beq	Lmulsfoverflow ;| is b INFINITY?
++;| Here we have both numbers finite and nonzero (and with no sign bit).
++;| Now we get the exponents into d2 and d3.
++	and.l	d6,d2		;| and isolate exponent in d2
++	beq	Lmulsfaden	;| if exponent is zero we have a denormalized
++	and.l	d5,d0		;| and isolate fraction
++	or.l	d4,d0		;| and put hidden bit back
++	swap	d2		;| I like exponents in the first byte
++#ifndef __mcf5200__
++	lsr.w	IMM (7),d2	;| 
++#else
++	lsr.l	IMM (7),d2	;| 
++#endif
++Lmulsf1:			;| number
++	and.l	d6,d3		;|
++	beq	Lmulsfbden	;|
++	and.l	d5,d1		;|
++	or.l	d4,d1		;|
++	swap	d3		;|
++#ifndef __mcf5200__
++	lsr.w	IMM (7),d3	;|
++#else
++	lsr.l	IMM (7),d3	;|
++#endif
++Lmulsf2:			;|
++#ifndef __mcf5200__
++	add.w	d3,d2		;| add exponents
++	sub.w	IMM (F_BIAS+1),d2 ;| and subtract bias (plus one)
++#else
++	add.l	d3,d2		;| add exponents
++	sub.l	IMM (F_BIAS+1),d2 ;| and subtract bias (plus one)
++#endif
++
++;| We are now ready to do the multiplication. The situation is as follows:
++;| both a and b have bit FLT_MANT_DIG-1 set (even if they were 
++;| denormalized to start with!), which means that in the product 
++;| bit 2*(FLT_MANT_DIG-1) (that is, bit 2*FLT_MANT_DIG-2-32 of the 
++;| high long) is set. 
++
++;| To do the multiplication let us move the number a little bit around ...
++	move.l	d1,d6		;| second operand in d6
++	move.l	d0,d5		;| first operand in d4-d5
++	move.l	IMM (0),d4
++	move.l	d4,d1		;| the sums will go in d0-d1
++	move.l	d4,d0
++
++;| now bit FLT_MANT_DIG-1 becomes bit 31:
++	lsl.l	IMM (31-FLT_MANT_DIG+1),d6		
++
++;| Start the loop (we loop #FLT_MANT_DIG times):
++	move.w	IMM (FLT_MANT_DIG-1),d3	
++1:	add.l	d1,d1		;| shift sum 
++	addx.l	d0,d0
++	lsl.l	IMM (1),d6	;| get bit bn
++	bcc	2f		;| if not set skip sum
++	add.l	d5,d1		;| add a
++	addx.l	d4,d0
++2:
++#ifndef __mcf5200__
++	dbf	d3,1b		;| loop back
++#else
++	subq.l	IMM (1),d3
++	bpl	1b
++#endif
++
++;| Now we have the product in d0-d1, with bit (FLT_MANT_DIG - 1) + FLT_MANT_DIG
++;| (mod 32) of d0 set. The first thing to do now is to normalize it so bit 
++;| FLT_MANT_DIG is set (to do the rounding).
++#ifndef __mcf5200__
++	ror.l	IMM (6),d1
++	swap	d1
++	move.w	d1,d3
++	and.w	IMM (0x03ff),d3
++	and.w	IMM (0xfd00),d1
++#else
++	move.l	d1,d3
++	lsl.l	IMM (8),d1
++	add.l	d1,d1
++	add.l	d1,d1
++	moveq	IMM (22),d5
++	lsr.l	d5,d3
++	or.l	d3,d1
++	and.l	IMM (0xfffffd00),d1
++#endif
++	lsl.l	IMM (8),d0
++	add.l	d0,d0
++	add.l	d0,d0
++#ifndef __mcf5200__
++	or.w	d3,d0
++#else
++	or.l	d3,d0
++#endif
++
++	move.w	IMM (MULTIPLY),d5
++	
++	btst	IMM (FLT_MANT_DIG+1),d0
++	beq	Lroundexit
++#ifndef __mcf5200__
++	lsr.l	IMM (1),d0
++	roxr.l	IMM (1),d1
++	add.w	IMM (1),d2
++#else
++	lsr.l	IMM (1),d1
++	btst	IMM (0),d0
++	beq	10f
++	bset	IMM (31),d1
++10:	lsr.l	IMM (1),d0
++	addq.l	IMM (1),d2
++#endif
++	bra	Lroundexit
++
++Lmulsfinop:
++	move.w	IMM (MULTIPLY),d5
++	bra	Lfinop
++
++Lmulsfoverflow:
++	move.w	IMM (MULTIPLY),d5
++	bra	Lfoverflow
++
++Lmulsfinf:
++	move.w	IMM (MULTIPLY),d5
++;| If either is NaN return NaN; else both are (maybe infinite) numbers, so
++;| return INFINITY with the correct sign (which is in d7).
++	cmp.l	d6,d1		;| is b NaN?
++	bhi	Lfinop		;| if so return NaN
++	bra	Lfoverflow	;| else return +/-INFINITY
++
++;| If either number is zero return zero, unless the other is +/-INFINITY, 
++;| or NaN, in which case we return NaN.
++Lmulsfb0:
++;| Here d1 (==b) is zero.
++	move.l	d1,d0		;| put b into d0 (just a zero)
++	move.l	8(a6),d1	;| get a again to check for non-finiteness
++	bra	1f
++Lmulsfa0:
++	move.l	12(a6),d1	;| get b again to check for non-finiteness
++1:	bclr	IMM (31),d1	;| clear sign bit 
++	cmp.l	IMM (INFINITY),d1 ;| and check for a large exponent
++	bge	Lfinop		;| if b is +/-INFINITY or NaN return NaN
++	lea	SYM (_fpCCR),a0	;| else return zero
++	move.w	IMM (0),(a0)	;| 
++#ifndef __mcf5200__
++	movem.l	(sp)+,d2-d7	;| 
++#else
++	movem.l	(sp),d2-d7
++	;| XXX if frame pointer is ever removed, stack pointer must
++	;| be adjusted here.
++#endif
++	unlk	a6		;| 
++	rts			;| 
++
++;| If a number is denormalized we put an exponent of 1 but do not put the 
++;| hidden bit back into the fraction; instead we shift left until bit 23
++;| (the hidden bit) is set, adjusting the exponent accordingly. We do this
++;| to ensure that the product of the fractions is close to 1.
++Lmulsfaden:
++	move.l	IMM (1),d2
++	and.l	d5,d0
++1:	add.l	d0,d0		;| shift a left (until bit 23 is set)
++#ifndef __mcf5200__
++	sub.w	IMM (1),d2	;| and adjust exponent
++#else
++	subq.l	IMM (1),d2	;| and adjust exponent
++#endif
++	btst	IMM (FLT_MANT_DIG-1),d0
++	bne	Lmulsf1	;|
++	bra	1b		;| else loop back
++
++Lmulsfbden:
++	move.l	IMM (1),d3
++	and.l	d5,d1
++1:	add.l	d1,d1		;| shift b left until bit 23 is set
++#ifndef __mcf5200__
++	sub.w	IMM (1),d3	;| and adjust exponent
++#else
++	sub.l	IMM (1),d3	;| and adjust exponent
++#endif
++	btst	IMM (FLT_MANT_DIG-1),d1
++	bne	Lmulsf2	;|
++	bra	1b		;| else loop back
++
++;|=============================================================================
++;|                             __divsf3
++;|=============================================================================
++
++;| float __divsf3(float, float);
++SYM (__divsf3):
++#ifndef __mcf5200__
++	link	a6,IMM (0)
++	movem.l	d2-d7,-(sp)
++#else
++	link	a6,IMM (-24)
++	movem.l	d2-d7,(sp)
++#endif
++	move.l	8(a6),d0		;| get a into d0
++	move.l	12(a6),d1		;| and b into d1
++	move.l	d0,d7			;| d7 will hold the sign of the result
++	eor.l	d1,d7			;|
++	and.l	IMM (0x80000000),d7	;| 
++	move.l	IMM (INFINITY),d6	;| useful constant (+INFINITY)
++	move.l	d6,d5			;| another (mask for fraction)
++	not.l	d5			;|
++	move.l	IMM (0x00800000),d4	;| this is to put hidden bit back
++	bclr	IMM (31),d0		;| get rid of a's sign bit '
++	move.l	d0,d2			;|
++	beq	Ldivsfa0		;| branch if a is zero
++	bclr	IMM (31),d1		;| get rid of b's sign bit '
++	move.l	d1,d3			;|
++	beq	Ldivsfb0		;| branch if b is zero
++	cmp.l	d6,d0			;| is a big?
++	bhi	Ldivsfinop		;| if a is NaN return NaN
++	beq	Ldivsfinf		;| if a is INFINITY we have to check b
++	cmp.l	d6,d1			;| now compare b with INFINITY 
++	bhi	Ldivsfinop		;| if b is NaN return NaN
++	beq	Ldivsfunderflow
++;| Here we have both numbers finite and nonzero (and with no sign bit).
++;| Now we get the exponents into d2 and d3 and normalize the numbers to
++;| ensure that the ratio of the fractions is close to 1. We do this by
++;| making sure that bit #FLT_MANT_DIG-1 (hidden bit) is set.
++	and.l	d6,d2		;| and isolate exponent in d2
++	beq	Ldivsfaden	;| if exponent is zero we have a denormalized
++	and.l	d5,d0		;| and isolate fraction
++	or.l	d4,d0		;| and put hidden bit back
++	swap	d2		;| I like exponents in the first byte
++#ifndef __mcf5200__
++	lsr.w	IMM (7),d2	;| 
++#else
++	lsr.l	IMM (7),d2	;| 
++#endif
++Ldivsf1:			;| 
++	and.l	d6,d3		;|
++	beq	Ldivsfbden	;|
++	and.l	d5,d1		;|
++	or.l	d4,d1		;|
++	swap	d3		;|
++#ifndef __mcf5200__
++	lsr.w	IMM (7),d3	;|
++#else
++	lsr.l	IMM (7),d3	;|
++#endif
++Ldivsf2:			;|
++#ifndef __mcf5200__
++	sub.w	d3,d2		;| subtract exponents
++ 	add.w	IMM (F_BIAS),d2	;| and add bias
++#else
++	sub.l	d3,d2		;| subtract exponents
++ 	add.l	IMM (F_BIAS),d2	;| and add bias
++#endif
++ 
++;| We are now ready to do the division. We have prepared things in such a way
++;| that the ratio of the fractions will be less than 2 but greater than 1/2.
++;| At this point the registers in use are:
++;| d0	holds a (first operand, bit FLT_MANT_DIG=0, bit FLT_MANT_DIG-1=1)
++;| d1	holds b (second operand, bit FLT_MANT_DIG=1)
++;| d2	holds the difference of the exponents, corrected by the bias
++;| d7	holds the sign of the ratio
++;| d4, d5, d6 hold some constants
++	move.l	d7,a0		;| d6-d7 will hold the ratio of the fractions
++	move.l	IMM (0),d6	;| 
++	move.l	d6,d7
++
++	move.w	IMM (FLT_MANT_DIG+1),d3
++1:	cmp.l	d0,d1		;| is a < b?
++	bhi	2f		;|
++	bset	d3,d6		;| set a bit in d6
++	sub.l	d1,d0		;| if a >= b  a <-- a-b
++	beq	3f		;| if a is zero, exit
++2:	add.l	d0,d0		;| multiply a by 2
++#ifndef __mcf5200__
++	dbra	d3,1b
++#else
++	subq.l	IMM (1),d3
++	bpl	1b
++#endif
++
++;| Now we keep going to set the sticky bit ...
++	move.w	IMM (FLT_MANT_DIG),d3
++1:	cmp.l	d0,d1
++	ble	2f
++	add.l	d0,d0
++#ifndef __mcf5200__
++	dbra	d3,1b
++#else
++	subq.l	IMM(1),d3
++	bpl	1b
++#endif
++	move.l	IMM (0),d1
++	bra	3f
++2:	move.l	IMM (0),d1
++#ifndef __mcf5200__
++	sub.w	IMM (FLT_MANT_DIG),d3
++	add.w	IMM (31),d3
++#else
++	sub.l	IMM (FLT_MANT_DIG),d3
++	add.l	IMM (31),d3
++#endif
++	bset	d3,d1
++3:
++	move.l	d6,d0		;| put the ratio in d0-d1
++	move.l	a0,d7		;| get sign back
++
++;| Because of the normalization we did before we are guaranteed that 
++;| d0 is smaller than 2^26 but larger than 2^24. Thus bit 26 is not set,
++;| bit 25 could be set, and if it is not set then bit 24 is necessarily set.
++	btst	IMM (FLT_MANT_DIG+1),d0		
++	beq	1f              ;| if it is not set, then bit 24 is set
++	lsr.l	IMM (1),d0	;|
++#ifndef __mcf5200__
++	add.w	IMM (1),d2	;|
++#else
++	add.l	IMM (1),d2	;|
++#endif
++1:
++;| Now round, check for over- and underflow, and exit.
++	move.w	IMM (DIVIDE),d5
++	bra	Lroundexit
++
++Ldivsfinop:
++	move.w	IMM (DIVIDE),d5
++	bra	Lfinop
++
++Ldivsfoverflow:
++	move.w	IMM (DIVIDE),d5
++	bra	Lfoverflow
++
++Ldivsfunderflow:
++	move.w	IMM (DIVIDE),d5
++	bra	Lfunderflow
++
++Ldivsfa0:
++	move.w	IMM (DIVIDE),d5
++;| If a is zero check to see whether b is zero also. In that case return
++;| NaN; then check if b is NaN, and return NaN also in that case. Else
++;| return zero.
++	and.l	IMM (0x7fffffff),d1	;| clear sign bit and test b
++	beq	Lfinop			;| if b is also zero return NaN
++	cmp.l	IMM (INFINITY),d1	;| check for NaN
++	bhi	Lfinop			;| 
++	move.l	IMM (0),d0		;| else return zero
++	lea	SYM (_fpCCR),a0		;|
++	move.w	IMM (0),(a0)		;|
++#ifndef __mcf5200__
++	movem.l	(sp)+,d2-d7		;| 
++#else
++	movem.l	(sp),d2-d7		;| 
++	;| XXX if frame pointer is ever removed, stack pointer must
++	;| be adjusted here.
++#endif
++	unlk	a6			;| 
++	rts				;| 
++	
++Ldivsfb0:
++	move.w	IMM (DIVIDE),d5
++;| If we got here a is not zero. Check if a is NaN; in that case return NaN,
++;| else return +/-INFINITY. Remember that a is in d0 with the sign bit 
++;| cleared already.
++	cmp.l	IMM (INFINITY),d0	;| compare d0 with INFINITY
++	bhi	Lfinop			;| if larger it is NaN
++	bra	Lfdiv0		;| else signal DIVIDE_BY_ZERO
++
++Ldivsfinf:
++	move.w	IMM (DIVIDE),d5
++;| If a is INFINITY we have to check b
++	cmp.l	IMM (INFINITY),d1	;| compare b with INFINITY 
++	bge	Lfinop			;| if b is NaN or INFINITY return NaN
++	bra	Lfoverflow		;| else return overflow
++
++;| If a number is denormalized we put an exponent of 1 but do not put the 
++;| bit back into the fraction.
++Ldivsfaden:
++	move.l	IMM (1),d2
++	and.l	d5,d0
++1:	add.l	d0,d0		;| shift a left until bit FLT_MANT_DIG-1 is set
++#ifndef __mcf5200__
++	sub.w	IMM (1),d2	;| and adjust exponent
++#else
++	sub.l	IMM (1),d2	;| and adjust exponent
++#endif
++	btst	IMM (FLT_MANT_DIG-1),d0
++	bne	Ldivsf1
++	bra	1b
++
++Ldivsfbden:
++	move.l	IMM (1),d3
++	and.l	d5,d1
++1:	add.l	d1,d1		;| shift b left until bit FLT_MANT_DIG is set
++#ifndef __mcf5200__
++	sub.w	IMM (1),d3	;| and adjust exponent
++#else
++	sub.l	IMM (1),d3	;| and adjust exponent
++#endif
++	btst	IMM (FLT_MANT_DIG-1),d1
++	bne	Ldivsf2
++	bra	1b
++
++Lroundexit:
++;| This is a common exit point for __mulsf3 and __divsf3. 
++
++;| First check for underlow in the exponent:
++#ifndef __mcf5200__
++	cmp.w	IMM (-FLT_MANT_DIG-1),d2		
++#else
++	cmp.l	IMM (-FLT_MANT_DIG-1),d2		
++#endif
++	blt	Lfunderflow	
++;| It could happen that the exponent is less than 1, in which case the 
++;| number is denormalized. In this case we shift right and adjust the 
++;| exponent until it becomes 1 or the fraction is zero (in the latter case 
++;| we signal underflow and return zero).
++	move.l	IMM (0),d6	;| d6 is used temporarily
++#ifndef __mcf5200__
++	cmp.w	IMM (1),d2	;| if the exponent is less than 1 we 
++#else
++	cmp.l	IMM (1),d2	;| if the exponent is less than 1 we 
++#endif
++	bge	2f		;| have to shift right (denormalize)
++1:
++#ifndef __mcf5200__
++	add.w	IMM (1),d2	;| adjust the exponent
++	lsr.l	IMM (1),d0	;| shift right once 
++	roxr.l	IMM (1),d1	;|
++	roxr.l	IMM (1),d6	;| d6 collect bits we would lose otherwise
++	cmp.w	IMM (1),d2	;| is the exponent 1 already?
++#else
++	addq.l	IMM (1),d2	;| adjust the exponent
++	lsr.l	IMM (1),d6
++	btst	IMM (0),d1
++	beq	11f
++	bset	IMM (31),d6
++11:	lsr.l	IMM (1),d1
++	btst	IMM (0),d0
++	beq	10f
++	bset	IMM (31),d1
++10:	lsr.l	IMM (1),d0
++	cmp.l	IMM (1),d2	;| is the exponent 1 already?
++#endif
++	beq	2f		;| if not loop back
++	bra	1b              ;|
++	bra	Lfunderflow	;| safety check, shouldn't execute '
++2:	or.l	d6,d1		;| this is a trick so we don't lose  '
++				;| the extra bits which were flushed right
++;| Now call the rounding routine (which takes care of denormalized numbers):
++	lea	Lround0,a0	;| to return from rounding routine
++	lea	SYM (_fpCCR),a1	;| check the rounding mode
++#ifdef __mcf5200__
++	clr.l	d6
++#endif
++	move.w	6(a1),d6	;| rounding mode in d6
++	beq	Lroundtonearest
++#ifndef __mcf5200__
++	cmp.w	IMM (ROUND_TO_PLUS),d6
++#else
++	cmp.l	IMM (ROUND_TO_PLUS),d6
++#endif
++	bhi	Lroundtominus
++	blt	Lroundtozero
++	bra	Lroundtoplus
++Lround0:
++;| Here we have a correctly rounded result (either normalized or denormalized).
++
++;| Here we should have either a normalized number or a denormalized one, and
++;| the exponent is necessarily larger or equal to 1 (so we don't have to  '
++;| check again for underflow!). We have to check for overflow or for a 
++;| denormalized number (which also signals underflow).
++;| Check for overflow (i.e., exponent >= 255).
++#ifndef __mcf5200__
++	cmp.w	IMM (0x00ff),d2
++#else
++	cmp.l	IMM (0x00ff),d2
++#endif
++	bge	Lfoverflow
++;| Now check for a denormalized number (exponent==0).
++	move.w	d2,d2
++	beq	Lfden
++1:
++;| Put back the exponents and sign and return.
++#ifndef __mcf5200__
++	lsl.w	IMM (7),d2	;| exponent back to fourth byte
++#else
++	lsl.l	IMM (7),d2	;| exponent back to fourth byte
++#endif
++	bclr	IMM (FLT_MANT_DIG-1),d0
++	swap	d0		;| and put back exponent
++#ifndef __mcf5200__
++	or.w	d2,d0		;| 
++#else
++	or.l	d2,d0
++#endif
++	swap	d0		;|
++	or.l	d7,d0		;| and sign also
++
++	lea	SYM (_fpCCR),a0
++	move.w	IMM (0),(a0)
++#ifndef __mcf5200__
++	movem.l	(sp)+,d2-d7
++#else
++	movem.l	(sp),d2-d7
++	;| XXX if frame pointer is ever removed, stack pointer must
++	;| be adjusted here.
++#endif
++	unlk	a6
++	rts
++
++;|=============================================================================
++;|                             __negsf2
++;|=============================================================================
++
++;| This is trivial and could be shorter if we didn't bother checking for NaN '
++;| and +/-INFINITY.
++
++;| float __negsf2(float);
++SYM (__negsf2):
++#ifndef __mcf5200__
++	link	a6,IMM (0)
++	movem.l	d2-d7,-(sp)
++#else
++	link	a6,IMM (-24)
++	movem.l	d2-d7,(sp)
++#endif
++	move.w	IMM (NEGATE),d5
++	move.l	8(a6),d0	;| get number to negate in d0
++	bchg	IMM (31),d0	;| negate
++	move.l	d0,d1		;| make a positive copy
++	bclr	IMM (31),d1	;|
++	tst.l	d1		;| check for zero
++	beq	2f		;| if zero (either sign) return +zero
++	cmp.l	IMM (INFINITY),d1 ;| compare to +INFINITY
++	blt	1f		;|
++	bhi	Lfinop		;| if larger (fraction not zero) is NaN
++	move.l	d0,d7		;| else get sign and return INFINITY
++	and.l	IMM (0x80000000),d7
++	bra	Lfinfty		
++1:	lea	SYM (_fpCCR),a0
++	move.w	IMM (0),(a0)
++#ifndef __mcf5200__
++	movem.l	(sp)+,d2-d7
++#else
++	movem.l	(sp),d2-d7
++	;| XXX if frame pointer is ever removed, stack pointer must
++	;| be adjusted here.
++#endif
++	unlk	a6
++	rts
++2:	bclr	IMM (31),d0
++	bra	1b
++
++;|=============================================================================
++;|                             __cmpsf2
++;|=============================================================================
++
++GREATER =  1
++LESS    = -1
++EQUAL   =  0
++
++;| int __cmpsf2(float, float);
++SYM (__cmpsf2):
++#ifndef __mcf5200__
++	link	a6,IMM (0)
++	movem.l	d2-d7,-(sp) 	;| save registers
++#else
++	link	a6,IMM (-24)
++	movem.l	d2-d7,(sp)
++#endif
++	move.w	IMM (COMPARE),d5
++	move.l	8(a6),d0	;| get first operand
++	move.l	12(a6),d1	;| get second operand
++;| Check if either is NaN, and in that case return garbage and signal
++;| INVALID_OPERATION. Check also if either is zero, and clear the signs
++;| if necessary.
++	move.l	d0,d6
++	and.l	IMM (0x7fffffff),d0
++	beq	Lcmpsfa0
++	cmp.l	IMM (0x7f800000),d0
++	bhi	Lfinop
++Lcmpsf1:
++	move.l	d1,d7
++	and.l	IMM (0x7fffffff),d1
++	beq	Lcmpsfb0
++	cmp.l	IMM (0x7f800000),d1
++	bhi	Lfinop
++Lcmpsf2:
++;| Check the signs
++	eor.l	d6,d7
++	bpl	1f
++;| If the signs are not equal check if a >= 0
++	tst.l	d6
++	bpl	Lcmpsfagtb	;| if (a >= 0 && b < 0) => a > b
++	bmi	Lcmpsfbgta	;| if (a < 0 && b >= 0) => a < b
++1:
++;| If the signs are equal check for < 0
++	tst.l	d6
++	bpl	1f
++;| If both are negative exchange them
++#ifndef __mcf5200__
++	exg	d0,d1
++#else
++	move.l	d0,d7
++	move.l	d1,d0
++	move.l	d7,d1
++#endif
++1:
++;| Now that they are positive we just compare them as longs (does this also
++;| work for denormalized numbers?).
++	cmp.l	d0,d1
++	bhi	Lcmpsfbgta	;| ;|b;| > ;|a;|
++	bne	Lcmpsfagtb	;| ;|b;| < ;|a;|
++;| If we got here a == b.
++	move.l	IMM (EQUAL),d0
++#ifndef __mcf5200__
++	movem.l	(sp)+,d2-d7 	;| put back the registers
++#else
++	movem.l	(sp),d2-d7
++#endif
++	unlk	a6
++	rts
++Lcmpsfagtb:
++	move.l	IMM (GREATER),d0
++#ifndef __mcf5200__
++	movem.l	(sp)+,d2-d7 	;| put back the registers
++#else
++	movem.l	(sp),d2-d7
++	;| XXX if frame pointer is ever removed, stack pointer must
++	;| be adjusted here.
++#endif
++	unlk	a6
++	rts
++Lcmpsfbgta:
++	move.l	IMM (LESS),d0
++#ifndef __mcf5200__
++	movem.l	(sp)+,d2-d7 	;| put back the registers
++#else
++	movem.l	(sp),d2-d7
++	;| XXX if frame pointer is ever removed, stack pointer must
++	;| be adjusted here.
++#endif
++	unlk	a6
++	rts
++
++Lcmpsfa0:	
++	bclr	IMM (31),d6
++	bra	Lcmpsf1
++Lcmpsfb0:
++	bclr	IMM (31),d7
++	bra	Lcmpsf2
++
++;|=============================================================================
++;|                           rounding routines
++;|=============================================================================
++
++;| The rounding routines expect the number to be normalized in registers
++;| d0-d1, with the exponent in register d2. They assume that the 
++;| exponent is larger or equal to 1. They return a properly normalized number
++;| if possible, and a denormalized number otherwise. The exponent is returned
++;| in d2.
++
++Lroundtonearest:
++;| We now normalize as suggested by D. Knuth ("Seminumerical Algorithms"):
++;| Here we assume that the exponent is not too small (this should be checked
++;| before entering the rounding routine), but the number could be denormalized.
++
++;| Check for denormalized numbers:
++1:	btst	IMM (FLT_MANT_DIG),d0
++	bne	2f		;| if set the number is normalized
++;| Normalize shifting left until bit #FLT_MANT_DIG is set or the exponent 
++;| is one (remember that a denormalized number corresponds to an 
++;| exponent of -F_BIAS+1).
++#ifndef __mcf5200__
++	cmp.w	IMM (1),d2	;| remember that the exponent is at least one
++#else
++	cmp.l	IMM (1),d2	;| remember that the exponent is at least one
++#endif
++ 	beq	2f		;| an exponent of one means denormalized
++	add.l	d1,d1		;| else shift and adjust the exponent
++	addx.l	d0,d0		;|
++#ifndef __mcf5200__
++	dbra	d2,1b		;|
++#else
++	subq.l	IMM (1),d2
++	bpl	1b
++#endif
++2:
++;| Now round: we do it as follows: after the shifting we can write the
++;| fraction part as f + delta, where 1 < f < 2^25, and 0 <= delta <= 2.
++;| If delta < 1, do nothing. If delta > 1, add 1 to f. 
++;| If delta == 1, we make sure the rounded number will be even (odd?) 
++;| (after shifting).
++	btst	IMM (0),d0	;| is delta < 1?
++	beq	2f		;| if so, do not do anything
++	tst.l	d1		;| is delta == 1?
++	bne	1f		;| if so round to even
++	move.l	d0,d1		;| 
++	and.l	IMM (2),d1	;| bit 1 is the last significant bit
++	add.l	d1,d0		;| 
++	bra	2f		;| 
++1:	move.l	IMM (1),d1	;| else add 1 
++	add.l	d1,d0		;|
++;| Shift right once (because we used bit #FLT_MANT_DIG!).
++2:	lsr.l	IMM (1),d0		
++;| Now check again bit #FLT_MANT_DIG (rounding could have produced a
++;| 'fraction overflow' ...).
++	btst	IMM (FLT_MANT_DIG),d0	
++	beq	1f
++	lsr.l	IMM (1),d0
++#ifndef __mcf5200__
++	add.w	IMM (1),d2
++#else
++	addq.l	IMM (1),d2
++#endif
++1:
++;| If bit #FLT_MANT_DIG-1 is clear we have a denormalized number, so we 
++;| have to put the exponent to zero and return a denormalized number.
++	btst	IMM (FLT_MANT_DIG-1),d0
++	beq	1f
++	jmp	(a0)
++1:	move.l	IMM (0),d2
++	jmp	(a0)
++
++Lroundtozero:
++Lroundtoplus:
++Lroundtominus:
++	jmp	(a0)
++#endif /* L_float */
++
++;| gcc expects the routines __eqdf2, __nedf2, __gtdf2, __gedf2,
++;| __ledf2, __ltdf2 to all return the same value as a direct call to
++;| __cmpdf2 would.  In this implementation, each of these routines
++;| simply calls __cmpdf2.  It would be more efficient to give the
++;| __cmpdf2 routine several names, but separating them out will make it
++;| easier to write efficient versions of these routines someday.
++
++#ifdef  L_eqdf2
++	.text
++	/*.proc*/
++	.globl	SYM (__eqdf2)
++SYM (__eqdf2):
++	link	a6,IMM (0)
++	move.l	20(a6),-(sp)
++	move.l	16(a6),-(sp)
++	move.l	12(a6),-(sp)
++	move.l	8(a6),-(sp)
++	bsr	SYM (__cmpdf2)
++	unlk	a6
++	rts
++#endif /* L_eqdf2 */
++
++#ifdef  L_nedf2
++	.text
++	/*.proc*/
++	.globl	SYM (__nedf2)
++SYM (__nedf2):
++	link	a6,IMM (0)
++	move.l	20(a6),-(sp)
++	move.l	16(a6),-(sp)
++	move.l	12(a6),-(sp)
++	move.l	8(a6),-(sp)
++	bsr	SYM (__cmpdf2)
++	unlk	a6
++	rts
++#endif /* L_nedf2 */
++
++#ifdef  L_gtdf2
++	.text
++	/*.proc*/
++	.globl	SYM (__gtdf2)
++SYM (__gtdf2):
++	link	a6,IMM (0)
++	move.l	20(a6),-(sp)
++	move.l	16(a6),-(sp)
++	move.l	12(a6),-(sp)
++	move.l	8(a6),-(sp)
++	bsr	SYM (__cmpdf2)
++	unlk	a6
++	rts
++#endif /* L_gtdf2 */
++
++#ifdef  L_gedf2
++	.text
++	/*.proc*/
++	.globl	SYM (__gedf2)
++SYM (__gedf2):
++	link	a6,IMM (0)
++	move.l	20(a6),-(sp)
++	move.l	16(a6),-(sp)
++	move.l	12(a6),-(sp)
++	move.l	8(a6),-(sp)
++	bsr	SYM (__cmpdf2)
++	unlk	a6
++	rts
++#endif /* L_gedf2 */
++
++#ifdef  L_ltdf2
++	.text
++	/*.proc*/
++	.globl	SYM (__ltdf2)
++SYM (__ltdf2):
++	link	a6,IMM (0)
++	move.l	20(a6),-(sp)
++	move.l	16(a6),-(sp)
++	move.l	12(a6),-(sp)
++	move.l	8(a6),-(sp)
++	bsr	SYM (__cmpdf2)
++	unlk	a6
++	rts
++#endif /* L_ltdf2 */
++
++#ifdef  L_ledf2
++	.text
++	/*.proc*/
++	.globl	SYM (__ledf2)
++SYM (__ledf2):
++	link	a6,IMM (0)
++	move.l	20(a6),-(sp)
++	move.l	16(a6),-(sp)
++	move.l	12(a6),-(sp)
++	move.l	8(a6),-(sp)
++	bsr	SYM (__cmpdf2)
++	unlk	a6
++	rts
++#endif /* L_ledf2 */
++
++;| The comments above about __eqdf2, et. al., also apply to __eqsf2,
++;| et. al., except that the latter call __cmpsf2 rather than __cmpdf2.
++
++#ifdef  L_eqsf2
++	.text
++	/*.proc*/
++	.globl	SYM (__eqsf2)
++SYM (__eqsf2):
++	link	a6,IMM (0)
++	move.l	12(a6),-(sp)
++	move.l	8(a6),-(sp)
++	bsr	SYM (__cmpsf2)
++	unlk	a6
++	rts
++#endif /* L_eqsf2 */
++
++#ifdef  L_nesf2
++	.text
++	/*.proc*/
++	.globl	SYM (__nesf2)
++SYM (__nesf2):
++	link	a6,IMM (0)
++	move.l	12(a6),-(sp)
++	move.l	8(a6),-(sp)
++	bsr	SYM (__cmpsf2)
++	unlk	a6
++	rts
++#endif /* L_nesf2 */
++
++#ifdef  L_gtsf2
++	.text
++	/*.proc*/
++	.globl	SYM (__gtsf2)
++SYM (__gtsf2):
++	link	a6,IMM (0)
++	move.l	12(a6),-(sp)
++	move.l	8(a6),-(sp)
++	bsr	SYM (__cmpsf2)
++	unlk	a6
++	rts
++#endif /* L_gtsf2 */
++
++#ifdef  L_gesf2
++	.text
++	/*.proc*/
++	.globl	SYM (__gesf2)
++SYM (__gesf2):
++	link	a6,IMM (0)
++	move.l	12(a6),-(sp)
++	move.l	8(a6),-(sp)
++	bsr	SYM (__cmpsf2)
++	unlk	a6
++	rts
++#endif /* L_gesf2 */
++
++#ifdef  L_ltsf2
++	.text
++	/*.proc*/
++	.globl	SYM (__ltsf2)
++SYM (__ltsf2):
++	link	a6,IMM (0)
++	move.l	12(a6),-(sp)
++	move.l	8(a6),-(sp)
++	bsr	SYM (__cmpsf2)
++	unlk	a6
++	rts
++#endif /* L_ltsf2 */
++
++#ifdef  L_lesf2
++	.text
++	/*.proc*/
++	.globl	SYM (__lesf2)
++SYM (__lesf2):
++	link	a6,IMM (0)
++	move.l	12(a6),-(sp)
++	move.l	8(a6),-(sp)
++	bsr	SYM (__cmpsf2)
++	unlk	a6
++	rts
++#endif /* L_lesf2 */
+diff --git a/gcc/config/m68k/m68k.c b/gcc/config/m68k/m68k.c
+index 9567c9d..a43d186 100644
+--- a/gcc/config/m68k/m68k.c
++++ b/gcc/config/m68k/m68k.c
+@@ -126,6 +126,27 @@ override_options ()
+     m68k_align_funcs = def_align;
+ }
+ 
++
++#ifdef AS68
++void output_movem_mask(stream, mask, dir)
++     FILE *stream;
++     unsigned long mask;
++     int dir;
++{
++  int first,regno;	
++
++  /*printf("MASK: %x\n",mask);*/
++  for (regno = 0, first = 1; regno < 16; regno++)
++    if (mask & (1 << regno))          
++      {      
++	fprintf (stream, "%s%s",(first ?"":"/"),reg_names[dir ? regno : 15-regno]);                
++	first = 0;
++      }
++}
++#define MOVEM_IN_MASK(STREAM,MASK) output_movem_mask(STREAM,MASK,1)
++#define MOVEM_OUT_MASK(STREAM,MASK) output_movem_mask(STREAM,MASK,0)
++#endif
++
+ /* This function generates the assembly code for function entry.
+    STREAM is a stdio stream to output the code to.
+    SIZE is an int: how many units of temporary storage to allocate.
+@@ -170,8 +191,13 @@ output_function_prologue (stream, size)
+       else if (fsize < 0x8000)
+ 	{
+ #ifdef MOTOROLA
++#ifndef AS68
+ 	  asm_fprintf (stream, "\tlink.w %s,%0I%d\n",
+ 		       reg_names[FRAME_POINTER_REGNUM], -fsize);
++#else
++	  asm_fprintf (stream, "\tlink %s,%0I%d\n",
++		       reg_names[FRAME_POINTER_REGNUM], -fsize);
++#endif
+ #else
+ 	  asm_fprintf (stream, "\tlink %s,%0I%d\n",
+ 		       reg_names[FRAME_POINTER_REGNUM], -fsize);
+@@ -191,8 +217,13 @@ output_function_prologue (stream, size)
+ 	{
+       /* Adding negative number is faster on the 68040.  */
+ #ifdef MOTOROLA
++#ifndef AS68
+ 	  asm_fprintf (stream, "\tlink.w %s,%0I0\n\tadd.l %0I%d,%Rsp\n",
+ 		       reg_names[FRAME_POINTER_REGNUM], -fsize);
++#else
++	  asm_fprintf (stream, "\tlink %s,%0I0\n\tadd.l %0I%d,%Rsp\n",
++		       reg_names[FRAME_POINTER_REGNUM], -fsize);
++#endif
+ #else
+ 	  asm_fprintf (stream, "\tlink %s,%0I0\n\taddl %0I%d,%Rsp\n",
+ 		       reg_names[FRAME_POINTER_REGNUM], -fsize);
+@@ -263,7 +294,11 @@ output_function_prologue (stream, size)
+ 	  else
+ 	    {
+ #ifdef MOTOROLA
++#ifdef AS68
++	      asm_fprintf (stream, "\tlea %d(%Rsp),%Rsp\n", - (fsize + 4));
++#else
+ 	      asm_fprintf (stream, "\tlea (%d,%Rsp),%Rsp\n", - (fsize + 4));
++#endif
+ #else
+ 	      asm_fprintf (stream, "\tlea %Rsp@(%d),%Rsp\n", - (fsize + 4));
+ #endif
+@@ -430,8 +465,15 @@ output_function_prologue (stream, size)
+ 		newmask |= (1 << (15-i));
+ 
+ #ifdef MOTOROLA
++#ifdef AS68
++	  asm_fprintf (stream, "\tlea %d(%Rsp),%Rsp\n", -num_saved_regs*4);
++	  asm_fprintf (stream, "\tmovem.l ");
++	  MOVEM_OUT_MASK (stream, newmask);
++	  asm_fprintf(stream,",(%Rsp)\n");
++#else
+ 	  asm_fprintf (stream, "\tlea (%d,%Rsp),%Rsp\n", -num_saved_regs*4);
+ 	  asm_fprintf (stream, "\tmovm.l %0I0x%x,(%Rsp)\n", newmask);
++#endif
+ #else
+ 	  asm_fprintf (stream, "\tlea %Rsp@(%d),%Rsp\n", -num_saved_regs*4);
+ 	  asm_fprintf (stream, "\tmoveml %0I0x%x,%Rsp@\n", newmask);
+@@ -440,7 +482,13 @@ output_function_prologue (stream, size)
+       else
+ 	{
+ #ifdef MOTOROLA
++#ifndef AS68
+ 	  asm_fprintf (stream, "\tmovm.l %0I0x%x,-(%Rsp)\n", mask);
++#else
++	  asm_fprintf (stream, "\tmovem.l ");
++	  MOVEM_OUT_MASK(stream, mask);
++	  asm_fprintf (stream, ",-(%Rsp)\n");
++#endif /* AS68 */
+ #else
+ 	  asm_fprintf (stream, "\tmoveml %0I0x%x,%Rsp@-\n", mask);
+ #endif
+@@ -647,10 +695,18 @@ output_function_epilogue (stream, size)
+       if (big)
+ 	{
+ #ifdef MOTOROLA
++#ifndef AS68
+ 	  asm_fprintf (stream, "\tmovm.l -%d(%s,%Ra1.l),%0I0x%x\n",
+ 		       offset + fsize,
+ 		       reg_names[FRAME_POINTER_REGNUM],
+ 		       mask);
++#else
++	  asm_fprintf (stream, "\tmovem.l -%d(%s,%Ra1.l),",
++		       offset + fsize,
++		       reg_names[FRAME_POINTER_REGNUM]);
++	  MOVEM_IN_MASK(stream, mask);
++	  fprintf(stream,"\n");
++#endif /* AS68 */
+ #else
+ 	  asm_fprintf (stream, "\tmoveml %s@(-%d,%Ra1:l),%0I0x%x\n",
+ 		       reg_names[FRAME_POINTER_REGNUM],
+@@ -660,7 +716,13 @@ output_function_epilogue (stream, size)
+       else if (restore_from_sp)
+ 	{
+ #ifdef MOTOROLA
++#ifndef AS68
+ 	  asm_fprintf (stream, "\tmovm.l (%Rsp)+,%0I0x%x\n", mask);
++#else
++	  asm_fprintf (stream, "\tmovem.l (%Rsp)+,");
++	  MOVEM_IN_MASK(stream, mask);
++	  fprintf(stream,"\n");
++#endif /* AS68 */
+ #else
+ 	  asm_fprintf (stream, "\tmoveml %Rsp@+,%0I0x%x\n", mask);
+ #endif
+@@ -668,10 +730,18 @@ output_function_epilogue (stream, size)
+       else
+ 	{
+ #ifdef MOTOROLA
++#ifndef AS68
+ 	  asm_fprintf (stream, "\tmovm.l -%d(%s),%0I0x%x\n",
+ 		       offset + fsize,
+ 		       reg_names[FRAME_POINTER_REGNUM],
+ 		       mask);
++#else
++	  asm_fprintf (stream, "\tmovem.l -%d(%s),",
++		       offset + fsize,
++		       reg_names[FRAME_POINTER_REGNUM]);
++	  MOVEM_IN_MASK(stream, mask);
++	  fprintf(stream,"\n");
++#endif
+ #else
+ 	  asm_fprintf (stream, "\tmoveml %s@(-%d),%0I0x%x\n",
+ 		       reg_names[FRAME_POINTER_REGNUM],
+@@ -812,7 +882,11 @@ output_function_epilogue (stream, size)
+ 	  else
+ 	    {
+ #ifdef MOTOROLA
++#ifndef AS68
+ 	      asm_fprintf (stream, "\tlea (%d,%Rsp),%Rsp\n", fsize + 4);
++#else
++	      asm_fprintf (stream, "\tlea %d(%Rsp),%Rsp\n", fsize + 4);
++#endif
+ #else
+ 	      asm_fprintf (stream, "\tlea %Rsp@(%d),%Rsp\n", fsize + 4);
+ #endif
+@@ -2117,12 +2191,12 @@ output_addsi3 (operands)
+       if (GET_CODE (operands[2]) == CONST_INT
+ 	  && INTVAL (operands[2]) + 0x8000 >= (unsigned) 0x10000)
+         return "move%.l %2,%0\n\tadd%.l %1,%0";
+-#ifdef SGS
++#if defined(SGS) || defined(AS68)
+       if (GET_CODE (operands[2]) == REG)
+ 	return "lea 0(%1,%2.l),%0";
+       else
+ 	return "lea %c2(%1),%0";
+-#else /* not SGS */
++#else /* not SGS or AS68 */
+ #ifdef MOTOROLA
+       if (GET_CODE (operands[2]) == REG)
+ 	return "lea (%1,%2.l),%0";
+@@ -2134,7 +2208,7 @@ output_addsi3 (operands)
+       else
+ 	return "lea %1@(%c2),%0";
+ #endif /* not MOTOROLA */
+-#endif /* not SGS */
++#endif /* not SGS or AS68 */
+     }
+   if (GET_CODE (operands[2]) == CONST_INT)
+     {
+@@ -2175,7 +2249,11 @@ output_addsi3 (operands)
+ 	    return "add%.w %2,%0";
+ 	  else
+ #ifdef MOTOROLA  
++#ifdef AS68
++	    return "lea %c2(%0),%0";
++#else
+ 	    return "lea (%c2,%0),%0";
++#endif
+ #else
+ 	    return "lea %0@(%c2),%0";
+ #endif
+@@ -2816,7 +2894,9 @@ print_operand (file, op, letter)
+ 	       && INTVAL (XEXP (op, 0)) >= -0x8000))
+ 	{
+ #ifdef MOTOROLA
++#ifndef AS68
+ 	  fprintf (file, ".l");
++#endif
+ #else
+ 	  fprintf (file, ":l");
+ #endif
+@@ -3158,7 +3238,7 @@ print_operand_address (file, addr)
+ 	    && INTVAL (addr) >= -0x8000)
+ 	  {
+ #ifdef MOTOROLA
+-#ifdef SGS
++#if defined(SGS) || defined(AS68)
+ 	    /* Many SGS assemblers croak on size specifiers for constants. */
+ 	    fprintf (file, "%d", INTVAL (addr));
+ #else
+@@ -3337,7 +3417,7 @@ output_iorsi3 (operands)
+       /* Do not delete a following tstl %0 insn; that would be incorrect.  */
+       CC_STATUS_INIT;
+       if (INTVAL (operands[2]) == 0xffff)
+-	return "mov%.w %2,%0";
++	return "move%.w %2,%0";
+       return "or%.w %2,%0";
+     }
+   if (GET_CODE (operands[2]) == CONST_INT
+diff --git a/gcc/config/m68k/m68k.h b/gcc/config/m68k/m68k.h
+index ee0dc75..450c2c1 100644
+--- a/gcc/config/m68k/m68k.h
++++ b/gcc/config/m68k/m68k.h
+@@ -1603,7 +1603,10 @@ __transfer_from_trampoline ()					\
+ #define STORE_FLAG_VALUE -1
+ 
+ /* When a prototype says `char' or `short', really pass an `int'.  */
++/* .. in QDOS compatibility with c68 says otherwise */
++#ifndef QDOS
+ #define PROMOTE_PROTOTYPES
++#endif
+ 
+ /* Specify the machine mode that pointers have.
+    After generation of rtl, the compiler makes no further distinction
+@@ -1828,7 +1831,7 @@ __transfer_from_trampoline ()					\
+ /* This is how to output a command to make the user-level label named NAME
+    defined for reference from other files.  */
+ 
+-#define GLOBAL_ASM_OP ".globl"
++#define GLOBAL_ASM_OP ".extern"
+ #define ASM_GLOBALIZE_LABEL(FILE,NAME)	\
+   do { fprintf (FILE, "%s ", GLOBAL_ASM_OP);		\
+        assemble_name (FILE, NAME);			\
+diff --git a/gcc/config/m68k/m68k.md b/gcc/config/m68k/m68k.md
+index 59a509c..30b23ba 100644
+--- a/gcc/config/m68k/m68k.md
++++ b/gcc/config/m68k/m68k.md
+@@ -912,7 +912,7 @@
+       else
+ 	{
+ #ifdef MOTOROLA
+-#ifdef SGS
++#if defined(SGS) || defined(AS68)
+ 	  /* Many SGS assemblers croak on size specifiers for constants. */
+ 	  return \"lea 0,%0\";
+ #else
+@@ -1120,7 +1120,7 @@
+ 	  else
+ 	    {
+ #ifdef MOTOROLA
+-#ifdef SGS
++#if defined(SGS) || defined(AS68)
+ 	      /* Many SGS assemblers croak on size specifiers for constants. */
+ 	      return \"lea 0,%0\";
+ #else
+@@ -1653,7 +1653,7 @@
+     {
+       operands[0] = XEXP (XEXP (operands[0], 0), 0);
+ #ifdef MOTOROLA
+-#ifdef SGS
++#if defined(SGS) || defined(AS68)
+       return \"clr%.l -(%0)\;move%.b %1,3(%0)\";
+ #else
+       return \"clr%.l -(%0)\;move%.b %1,(3,%0)\";
+@@ -1667,7 +1667,7 @@
+     {
+       operands[0] = XEXP (XEXP (operands[0], 0), 0);
+ #ifdef MOTOROLA
+-#ifdef SGS
++#if defined(SGS) || defined(AS68)
+       return \"clr%.l (%0)+\;move%.b %1,-1(%0)\";
+ #else
+       return \"clr%.l (%0)+\;move%.b %1,(-1,%0)\";
+@@ -2356,7 +2356,11 @@
+ #endif
+       if (ADDRESS_REG_P (operands[0]) && !TARGET_68040)
+ #ifdef MOTOROLA  
++#ifdef AS68
++	    return \"lea %c2(%0),%0\";
++#else
+ 	    return \"lea (%c2,%0),%0\";
++#endif /* AS68 */
+ #else
+ 	    return \"lea %0@(%c2),%0\";
+ #endif
+@@ -2418,7 +2422,11 @@
+ #endif
+       if (ADDRESS_REG_P (operands[0]) && !TARGET_68040)
+ #ifdef MOTOROLA  
++#ifdef AS68
++	    return \"lea %c1(%0),%0\";
++#else
+ 	    return \"lea (%c1,%0),%0\";
++#endif
+ #else
+ 	    return \"lea %0@(%c1),%0\";
+ #endif
+@@ -2474,7 +2482,11 @@
+ #endif
+       if (ADDRESS_REG_P (operands[0]) && !TARGET_68040)
+ #ifdef MOTOROLA  
++#ifdef AS68
++	    return \"lea %c1(%0),%0\";
++#else
+ 	    return \"lea (%c1,%0),%0\";
++#endif /* AS68 */
+ #else
+ 	    return \"lea %0@(%c1),%0\";
+ #endif
+@@ -3930,7 +3942,7 @@
+   if (GET_CODE (operands[2]) != REG
+   || REGNO (operands[2]) != REGNO (operands[0]))
+     output_asm_insn (\"move%.w %2,%0\", operands);
+-  return \"swap %0\;mov%.w %1,%0\";
++  return \"swap %0\;move%.w %1,%0\";
+ }")
+ 
+ (define_insn "iorsi_zext"
+@@ -4589,7 +4601,7 @@
+   else if (INTVAL (operands[2]) == 16)
+     return \"swap %1\;swap %0\;move%.w %1,%0\;clr%.w %1\";
+   else if (INTVAL (operands[2]) == 48)
+-    return \"mov%.l %1,%0\;swap %0\;clr%.l %1\;clr%.w %0\";
++    return \"move%.l %1,%0\;swap %0\;clr%.l %1\;clr%.w %0\";
+   else if (INTVAL (operands[2]) == 2)
+     return \"add%.l %1,%1\;addx%.l %0,%0\;add%.l %1,%1\;addx%.l %0,%0\";
+   else if (INTVAL (operands[2]) == 3)
+@@ -4599,7 +4611,7 @@
+       operands[2] = GEN_INT (INTVAL (operands[2]) - 32);
+       output_asm_insn (INTVAL (operands[2]) <= 8 ? \"asl%.l %2,%1\" :
+ 			\"moveq %2,%0\;asl%.l %0,%1\", operands);
+-      return \"mov%.l %1,%0\;moveq %#0,%1\";
++      return \"move%.l %1,%0\;moveq %#0,%1\";
+     }
+ } ")
+ 
+@@ -4808,7 +4820,7 @@
+       operands[2] = GEN_INT (INTVAL (operands[2]) - 32);
+       output_asm_insn (INTVAL (operands[2]) <= 8 ? \"asr%.l %2,%0\" :
+ 			\"moveq %2,%1\;asr%.l %1,%0\", operands);
+-      output_asm_insn (\"mov%.l %0,%1\;smi %0\", operands);
++      output_asm_insn (\"move%.l %0,%1\;smi %0\", operands);
+       return INTVAL (operands[2]) >= 15 ? \"ext%.w %d0\" :
+ 	     TARGET_68020 ? \"extb%.l %0\" : \"ext%.w %0\;ext%.l %0\";
+     }
+@@ -4978,7 +4990,7 @@
+       operands[2] = GEN_INT (INTVAL (operands[2]) - 32);
+       output_asm_insn (INTVAL (operands[2]) <= 8 ? \"lsr%.l %2,%0\" :
+ 			\"moveq %2,%1\;lsr%.l %1,%0\", operands);
+-      return \"mov%.l %0,%1\;moveq %#0,%0\";
++      return \"move%.l %0,%1\;moveq %#0,%0\";
+     }
+ } ")
+ 
+@@ -6531,7 +6543,11 @@
+   if (TARGET_5200)
+     {
+ #ifdef MOTOROLA
++#ifdef AS68
++      return \"ext%.l %0\;jmp 2(pc,%0.l)\";
++#else
+       return \"ext%.l %0\;jmp (2,pc,%0.l)\";
++#endif /* AS68 */
+ #else
+       return \"extl %0\;jmp pc@(2,%0:l)\";
+ #endif
+@@ -6539,7 +6555,11 @@
+   else
+     {
+ #ifdef MOTOROLA
++#ifdef AS68
++      return \"jmp 2(pc,%0.w)\";
++#else
+       return \"jmp (2,pc,%0.w)\";
++#endif AS68
+ #else
+       return \"jmp pc@(2,%0:w)\";
+ #endif
+@@ -7076,7 +7096,11 @@
+ 	    output_asm_insn (\"add%.w %1,%0\", xoperands);
+ 	  else
+ #ifdef MOTOROLA  
++#ifdef AS68
++	    output_asm_insn (\"lea %c1(%0),%0\", xoperands);
++#else
+ 	    output_asm_insn (\"lea (%c1,%0),%0\", xoperands);
++#endif /* AS68*/
+ #else
+ 	    output_asm_insn (\"lea %0@(%c1),%0\", xoperands);
+ #endif
+@@ -7127,7 +7151,11 @@
+ 	  else
+ 	    {
+ #ifdef MOTOROLA  
++#ifdef AS68
++	      output_asm_insn (\"lea %c1(%0),%0\", xoperands);
++#else
+ 	      output_asm_insn (\"lea (%c1,%0),%0\", xoperands);
++#endif /*AS68*/
+ #else
+ 	      output_asm_insn (\"lea %0@(%c1),%0\", xoperands);
+ #endif
+diff --git a/gcc/config/m68k/qdos.c b/gcc/config/m68k/qdos.c
+new file mode 100644
+index 0000000..d633a65
+--- /dev/null
++++ b/gcc/config/m68k/qdos.c
+@@ -0,0 +1,193 @@
++#include "config.h"
++#include "system.h"
++#include "rtl.h"
++#include "tree.h"
++#include "flags.h"
++#include "except.h"
++#include "function.h"
++#include "expr.h"
++#include "output.h"
++#include "hard-reg-set.h"
++#include "regs.h"
++#include "defaults.h"
++#include "real.h"
++#include "toplev.h"
++#include "dbxout.h"
++#include "sdbout.h"
++
++
++/* code for exact match, currently not needed*/
++#if 0
++static struct {
++  int len;
++  char *name;
++  tree id;
++} c68_specials []= {
++#ifdef C68_INTMATH
++  {0,MULSI3_LIBCALL,NULL},
++  {0,UMULSI3_LIBCALL,NULL},
++  {0,DIVSI3_LIBCALL,NULL},
++  {0,UDIVSI3_LIBCALL,NULL},
++  {0,MODSI3_LIBCALL,NULL},
++  {0,UMODSI3_LIBCALL,NULL},
++#endif
++  {0,NULL,NULL}
++};
++
++static int c68_scount=0;
++
++static void init_c68_specials()
++{
++  int i=0;
++  for(;c68_specials[i].name;i++)
++    {
++      c68_specials[i].len=strlen(c68_specials[i].name);
++    }
++  c68_scount=i;
++}
++#endif
++
++static int is_c68_lib(id)
++     tree id;
++{
++  int i;
++  
++#if 0
++  if (c68_scount==0)
++    init_c68_specials();
++#endif
++
++#if 0  
++  printf("is_c68_lib: %s\n",IDENTIFIER_POINTER(id));
++  printf("c68_scount %d\n",c68_scount);
++#endif
++
++  if ( IDENTIFIER_LENGTH(id)>3 &&
++       ( !bcmp(IDENTIFIER_POINTER(id),"*.X",3) ||
++	 !bcmp(IDENTIFIER_POINTER(id),"*.Y",3)))
++    return 1;
++  else return 0;
++
++
++  /* old code, used exact match */
++#if 0
++  for(i=0; i<c68_scount; i++)
++    {
++      if ( IDENTIFIER_LENGTH(id)==c68_specials[i].len )
++	{ 
++	  /* try hashed value compare first */
++	  if ( id == c68_specials[i].id )
++	    return 1;
++	  /* if id not initialised try full compare */
++	  if (!c68_specials[i].id && !bcmp(IDENTIFIER_POINTER(id),
++		    c68_specials[i].name,
++		    c68_specials[i].len))
++	    { 
++	      /* add hash id for speedup */
++	      /*printf("addind hashed id for %s\n",IDENTIFIER_POINTER(id));*/
++	      c68_specials[i].id=id;
++	      return 1;
++	    }   
++	}
++    }
++
++  return 0;
++#endif /* old code */
++}
++
++int qdos_return_pops_args(fundecl,funtype,size)
++     tree fundecl;
++     tree funtype;
++     int size;
++{
++  if (fundecl && TREE_CODE (fundecl) == IDENTIFIER_NODE
++      && is_c68_lib(fundecl))
++    {
++      /*printf("..is_c68_lib\n");*/
++      return size;
++    }
++  else
++    /* fallback to default m68k conventions */
++    return  ((TARGET_RTD && (!(fundecl) || TREE_CODE (fundecl) != IDENTIFIER_NODE)
++	      && (TYPE_ARG_TYPES (funtype) == 0
++		  || (TREE_VALUE (tree_last (TYPE_ARG_TYPES (funtype)))
++		      == void_type_node)))
++	     ? (size) : 0);
++}
++
++
++
++qdos_asm_output_labelref(file, name)
++     FILE *file;
++     char *name;
++{
++  asm_fprintf (file, "%0U%s", name);
++}
++
++qdos_asm_output_common(file,name,size,rounded)
++     FILE* file;
++     char *name;
++     int size,rounded;
++{
++  bss_section();
++  fputs ((IS_GWASS ? "    XDEF " :"\t.extern\t"), (file));
++  assemble_name ((file), (name)), fputs("\n",(file));
++  assemble_name ((file), (name)), fputs(":\n",(file));
++  if (IS_GWASS)
++    fprintf((file),"    DS.%s %d\n",((size) % 2) ? "b" : "w",
++	                              ((size) % 2) ? (size) : (size)/2 ); 
++  else {
++    fprintf ((file), "\t.space\t%u\n", (size));
++    fputs((size)!=(rounded) ?"\t.align\t2\n":"",(file));
++  }
++}
++qdos_asm_output_local(file,name,size,rounded)
++     FILE* file;
++     char *name;
++     int size,rounded;
++{
++  bss_section();
++  assemble_name ((file), (name)), fputs(":\n",(file));
++  if (IS_GWASS)
++    fprintf((file),"    DS.%s %d\n",((size) % 2) ? "B" : "W",
++	                              ((size) % 2) ? (size) : (size)/2 ); 
++  else {
++    fprintf ((file), "\t.space\t%u\n", (size));
++    fputs((size)!=(rounded) ?"\t.align\t2\n":"",(file));
++  }
++}
++
++qdos_asm_output_align(file,log)
++     FILE *file;
++     int log;
++{
++  if (IS_GWASS)
++    {
++      if (log==2)
++	fprintf (file, "    ALIGN4\n");
++      else if (log==3)
++	fprintf (file, "    ALIGN8\n");
++      else if (log>3)
++	fprintf (file, "    ALIGN16\n");
++    }
++  else
++    { 
++      int _LOG = log;
++      if (_LOG == 1)     
++	fprintf (file, "\t.align 2\n"); 
++      else if (_LOG == 2)
++	fprintf (file, "\t.align 4\n");
++      else if (_LOG != 0)
++	fprintf (file, "\t.align 8\n");\
++    }
++}
++
++qdos_asm_start_file(file)
++     FILE *file;
++{
++  if( IS_GWASS)
++    fprintf (file, "\tSECTION\ttext\n\tSECTION\trom\n\tSECTION\tdata\n\tSECTION\tbss\n\n");
++  else
++    fprintf (file, "\t.sect\t.text\n\t.sect\t.rom\n\t.sect\t.data\n\t.sect\t.bss\n\n");
++}
++
+diff --git a/gcc/config/m68k/qdos.h b/gcc/config/m68k/qdos.h
+new file mode 100644
+index 0000000..6739ece
+--- /dev/null
++++ b/gcc/config/m68k/qdos.h
+@@ -0,0 +1,1029 @@
++/* Definitions of target machine for GNU compiler.  QDOS version.
++   Copyright (C) 2000 Richard Zidlicky rz@linux-m68k.org
++
++This file is part of GNU CC.
++
++GNU CC is free software; you can redistribute it and/or modify
++it under the terms of the GNU General Public License as published by
++the Free Software Foundation; either version 2, or (at your option)
++any later version.
++
++GNU CC is distributed in the hope that it will be useful,
++but WITHOUT ANY WARRANTY; without even the implied warranty of
++MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
++GNU General Public License for more details.
++
++You should have received a copy of the GNU General Public License
++along with GNU CC; see the file COPYING.  If not, write to
++the Free Software Foundation, 59 Temple Place - Suite 330,
++Boston, MA 02111-1307, USA.  */
++
++/*
++  Definition for gcc-qdos target. Compiles using c68 calling conventions 
++  and as68 assembler output
++ */
++
++#undef USE_GAS
++
++/* QDOS: use QDOS-c68 rules for ANSI arg promotion rules, this turns off 
++   PROMOTE_PROTOTYPES in m68k.h. See also PARM_BOUNDARY
++   QDOS also used to control a few things in libgcc.a
++*/
++
++#ifndef QDOS
++#define QDOS
++#endif
++
++
++#ifndef USE_GAS
++/* This controls conditionals in m68k.h.  */
++#define MOTOROLA		/* Use Motorola syntax rather than "MIT" */
++#define MOTOROLA_BSR
++#define AS68         /* as68 needs displ(reg) instead of (displ,reg) */
++#define SGS_SWITCH_TABLES
++#define SGS_NO_LI
++#endif
++
++#define NO_DOLLAR_IN_LABEL
++#define NO_DOT_IN_LABEL
++
++/* Use atexit for static constructors/destructors, instead of defining
++   our own exit function.  */
++#define HAVE_ATEXIT
++
++#include "m68k/m68k.h"
++
++#undef SELECT_RTX_SECTION  /* m68k.h overrides the default which isn't good */
++
++/* needed for c68 calling conventions */
++#undef PARM_BOUNDARY
++#define PARM_BOUNDARY 16
++
++/* special c68 support library calling conventions */
++#undef RETURN_POPS_ARGS
++#define RETURN_POPS_ARGS(FUNDECL,FUNTYPE,SIZE)  qdos_return_pops_args(FUNDECL,FUNTYPE,SIZE)
++
++#undef ASM_OUTPUT_LABELREF
++#define ASM_OUTPUT_LABELREF(FILE,NAME) qdos_asm_output_labelref(FILE,NAME)
++
++#if 0
++/* Beginning of c68 PIC support, f-prologue,epilogue and reload1.c must be fixed */
++#undef PIC_OFFSET_TABLE_REGNUM
++#define PIC_OFFSET_TABLE_REGNUM  14 /* c68 uses a6 ?*/
++/*#define PIC_OFFSET_TABLE_REG_CALL_CLOBBERED*/ /* not clobbered by calls in c68 */
++
++#undef CONDITIONAL_REGISTER_USAGE 
++#define CONDITIONAL_REGISTER_USAGE \
++{ 						\
++  if (flag_pic)					\
++    fixed_regs[PIC_OFFSET_TABLE_REGNUM]		\
++      = call_used_regs[PIC_OFFSET_TABLE_REGNUM] = 1;\
++}
++
++/* Base register for access to local variables of the function.  */
++#undef FRAME_POINTER_REGNUM
++#define FRAME_POINTER_REGNUM (flag_pic ? 13 : 14)
++
++/* Base register for access to arguments of the function.  */
++#undef ARG_POINTER_REGNUM
++#define ARG_POINTER_REGNUM (flag_pic ? 13 : 14)
++#endif /* C68 PIC support */
++
++/* some other bits that may be needed to make it c68 compatible 
++   see mot3300.h for library call hacks
++*/
++#if 0
++/* This will return small structs in d0.  */
++#define RETURN_IN_MEMORY(type) \
++  ((TYPE_MODE (type) == BLKmode) \
++   || (AGGREGATE_TYPE_P (type) \
++       && GET_MODE_SIZE (TYPE_MODE (type)) > UNITS_PER_WORD))
++
++/* Don't default to pcc-struct-return, because we have already specified
++   exactly how to return structures in the RETURN_IN_MEMORY macro.  */
++#define DEFAULT_PCC_STRUCT_RETURN 0
++#endif
++
++
++#define TARGET_DEFAULT 0 /*(MASK_BITFIELD|MASK_68881|MASK_68020)*/
++
++/* use fomit-frame-pointer as default for -O>=2 or -Os*/
++#define OPTIMIZATION_OPTIONS(OPTIMIZE,SIZE) \
++ {  								\
++   if (OPTIMIZE >= 2 || (SIZE)) 						\
++     flag_omit_frame_pointer = 1;				\
++ }
++
++#define MASK_C68MATH  8192   
++#undef SUBTARGET_SWITCHES
++#define SUBTARGET_SWITCHES \
++        {"c68lib", +MASK_C68MATH, "use c68 version of math support library"},
++
++#define C68LIB (target_flags & MASK_C68MATH)
++
++/* QDOS sections:
++ text
++ data   initialised data
++ udata  uninitialised data
++ RLSI   linker relocation
++ bss    initialisation data
++*/
++
++#define IS_GWASS  (target_flags & (MASK_68020 | MASK_68881))
++
++#undef DATA_SECTION_ASM_OP
++#undef TEXT_SECTION_ASM_OP
++
++#define DATA_SECTION_ASM_OP (IS_GWASS ? "    SECTION data" : "\t.sect\t.data" )
++#define TEXT_SECTION_ASM_OP (IS_GWASS ? "    SECTION text" :"\t.sect\t.text")
++#define BSS_SECTION_ASM_OP (IS_GWASS ? "    SECTION bss" :"\t.sect\t.bss")             /* change to udata ?*/
++
++
++#undef ASM_OUTPUT_COMMON
++#define ASM_OUTPUT_COMMON(FILE,NAME,SIZE,ROUNDED) qdos_asm_output_common(FILE,NAME,SIZE,ROUNDED)
++
++#undef ASM_OUTPUT_LOCAL
++#define ASM_OUTPUT_LOCAL(FILE,NAME,SIZE,ROUNDED) qdos_asm_output_local(FILE,NAME,SIZE,ROUNDED)
++
++
++#define ASM_OUTPUT_BSS(FILE,DECL,NAME,SIZE,ROUNDED) \
++(  asm_output_bss(FILE,DECL,NAME,SIZE,ROUNDED),\
++   fputs("\t.align\t2\n",(FILE)))                   
++
++#define SPACE_ASM_OP ".space"
++
++#define ASM_DECLARE_OBJECT(FILE,NAME,OBJECT) \
++( fputs (IS_GWASS ? "    XDEF ":"\t.extern\t", (FILE)),                           \
++  assemble_name ((FILE), (NAME)), fputs("\n",(FILE)))
++
++#undef GLOBAL_ASM_OP
++#ifndef IN_LIBGCC2
++#define GLOBAL_ASM_OP (IS_GWASS ? "    XDEF " : "\t.extern\t")
++#else
++#define GLOBAL_ASM_OP "\t.extern\t"
++#endif
++
++/* Define __HAVE_68881__ in preprocessor, unless -msoft-float is specified.
++   This will control the use of inline 68881 insns in certain macros.  */
++
++#define CPP_SPEC "%{!msoft-float:-D__HAVE_68881__}  %{.S:-P} %{.asm:-P} -I/usr/local/qdos-gcc/include -I/usr/local/qdos-gcc/include/sys"
++/* ignore -g or -p flags */
++#define CC1_SPEC " %{g:} %{p:}"
++
++/* no -g or -p option  */
++
++#define LINK_SPEC " -L/usr/local/qdos-gcc/lib "
++#define LIB_SPEC " -lc "
++#define LINKER_NAME "/usr/local/qdos-gcc/bin/ld "
++#define STARTFILE_SPEC ""   /* suppress crt0.o (c68 ld does it itself) */
++#define LIBGCC_SPEC "-lgcc" /* (don't) suppress -lgcc */
++
++/* define gwass flag for anything that won't assemble with as68 */
++#define ASM_SPEC "%{m68020:-gwass}%{m68030:-gwass} %{m68040:-gwass} %{m68881:-gwass} %{m68060:-gwass} %{m68020-40:-gwass} %{m68020-60:-gwass} %{m68020-60:-gwass} %{m68040-60:-gwass}"
++
++/*#define TOOLDIR_BASE_PREFIX  "/usr/local/qdos-gcc"*/
++/*#define TOOL_INCLUDE_DIR  "/usr/local/qdos-gcc/include"*/
++/*#define LINK_COMMAND_SPEC "/usr/local/qdos-gcc/bin/ld "*/
++
++/*#define STANDARD_EXEC_PREFIX "/usr/local/qdos-gcc/bin"*/
++/*#define MD_STARTFILE_PREFIX "/usr/local/qdos-gcc/bin"*/
++/*#define LIB_SPEC "%{g:-lg} %{!p:%{!pg:-lc}}%{p:-lc_p}%{pg:-lc_p} "*/
++
++#if 0
++/* this is necessary because c68-ld expects '-o outfile' in a special position */
++#define LINK_COMMAND_SPEC "\
++%{!fsyntax-only: \
++ %{!c:%{!M:%{!MM:%{!E:%{!S:%(linker) %l %X  %{A} %{d} %{e*} %{m} %{N} %{n} \
++			%{r} %{s} %{t} %{u*} %{x} %{z} %{Z}\
++			%{!A:%{!nostdlib:%{!nostartfiles:%S}}}\
++			%{static:} %{L*} %D %o %{o*} \
++			%{!nostdlib:%{!nodefaultlibs:%G %L %G}}\
++			%{!A:%{!nostdlib:%{!nostartfiles:%E}}}\
++			%{T*} \
++			\n }}}}}}"
++#endif
++
++/* Names to predefine in the preprocessor for this target machine.  */
++
++#ifdef MOTOROLA
++#define CPP_PREDEFINES " -Dmc68000 -DMC68000 -D__QDOS__ -D__MC68000__ -DQDOS -Asystem(qdos-gcc) -Asystem(QDOS) -Acpu(m68k) -Amachine(m68k)"
++#else
++#define CPP_PREDEFINES " -Dmc68000 -DMC68000 -D__QDOS__ -D__MC68000__ -DQDOS -Asystem(qdos-gcc) -Asystem(QDOS) -Acpu(m68k) -Amachine(m68k)"
++#endif
++
++
++/* define c68 routines to use:
++   .Xulmul
++   .Xuldiv
++   .Xlmul
++   .Xldiv
++
++`MULSI3_LIBCALL'
++     A C string constant giving the name of the function to call for
++     multiplication of one signed full-word by another.  If you do not
++     define this macro, the default name is used, which is `__mulsi3',
++     a function defined in `libgcc.a'.
++
++`DIVSI3_LIBCALL'
++     A C string constant giving the name of the function to call for
++     division of one signed full-word by another.  If you do not define
++     this macro, the default name is used, which is `__divsi3', a
++     function defined in `libgcc.a'.
++
++`UDIVSI3_LIBCALL'
++     A C string constant giving the name of the function to call for
++     division of one unsigned full-word by another.  If you do not
++     define this macro, the default name is used, which is `__udivsi3',
++     a function defined in `libgcc.a'.
++
++`MODSI3_LIBCALL'
++     A C string constant giving the name of the function to call for the
++     remainder in division of one signed full-word by another.  If you
++     do not define this macro, the default name is used, which is
++     `__modsi3', a function defined in `libgcc.a'.
++
++`UMODSI3_LIBCALL'
++     A C string constant giving the name of the function to call for the
++     remainder in division of one unsigned full-word by another.  If
++     you do not define this macro, the default name is used, which is
++     `__umodsi3', a function defined in `libgcc.a'.
++
++`MULDI3_LIBCALL'
++     A C string constant giving the name of the function to call for
++     multiplication of one signed double-word by another.  If you do not
++     define this macro, the default name is used, which is `__muldi3',
++     a function defined in `libgcc.a'.
++
++`DIVDI3_LIBCALL'
++     A C string constant giving the name of the function to call for
++     division of one signed double-word by another.  If you do not
++     define this macro, the default name is used, which is `__divdi3', a
++     function defined in `libgcc.a'.
++
++`UDIVDI3_LIBCALL'
++     A C string constant giving the name of the function to call for
++     division of one unsigned full-word by another.  If you do not
++     define this macro, the default name is used, which is `__udivdi3',
++     a function defined in `libgcc.a'.
++
++`MODDI3_LIBCALL'
++     A C string constant giving the name of the function to call for the
++     remainder in division of one signed double-word by another.  If
++     you do not define this macro, the default name is used, which is
++     `__moddi3', a function defined in `libgcc.a'.
++
++`UMODDI3_LIBCALL'
++     A C string constant giving the name of the function to call for the
++     remainder in division of one unsigned full-word by another.  If
++     you do not define this macro, the default name is used, which is
++     `__umoddi3', a function defined in `libgcc.a'.
++*/
++
++/* define this to use c68 support routines for math */
++/* must observe special calling conventions */
++
++#define C68_INTMATH
++#define C68_FLOATMATH
++
++#ifdef C68_INTMATH
++#define MULSI3_LIBCALL (C68LIB ? "*.Xlmul" : "*.GXlmul")
++#define UMULSI3_LIBCALL (C68LIB ? "*.Xulmul" : "*.GXulmul")
++#define DIVSI3_LIBCALL (C68LIB ? "*.Xldiv" : "*.GXldiv")
++#define UDIVSI3_LIBCALL (C68LIB ? "*.Xuldiv" : "*.GXuldiv")
++#define MODSI3_LIBCALL (C68LIB ? "*.Xlrem" : "*.GXlrem")
++#define UMODSI3_LIBCALL (C68LIB ? "*.Xulrem" : "*.GXulrem")
++#endif
++
++#ifdef C68_FLOATMATH
++#define MULDD3_LIBCALL (C68LIB ? "*.Ydfmul" : "*.GYdfmul")
++#define MULDF3_LIBCALL (C68LIB ? "*.Ysfmul" : "*.GYsfmul")
++#define DIVDD3_LIBCALL (C68LIB ? "*.Ydfdiv" : "*.GYdfdiv")
++#define DIVDF3_LIBCALL (C68LIB ? "*.Ysfdiv" : "*.GYsfdiv")
++#define ADDD3_LIBCALL (C68LIB ? "*.Ydfadd" : "*.GYdfadd")
++#define ADDF3_LIBCALL (C68LIB ? "*.Ysfadd" : "*.GYsfadd")
++#define SUBDD3_LIBCALL (C68LIB ? "*.Ydfsub" : "*.GYdfsub")
++#define SUBDF3_LIBCALL (C68LIB ? "*.Ysfsub" : "*.GYsfsub")
++
++#define EXTENDSFDF2_LIBCALL (C68LIB ? "*.Ysftodf" : "*.GYsftodf") /* float -> double */
++#define TRUNCDFSF2_LIBCALL (C68LIB ? "*.Ydftosf" : "*.GYdftosf")  /* double -> float */
++#define FLOATSIDF_LIBCALL (C68LIB ? "*.Ydfltodf" : "*.GYdfltodf")
++#define FLOATSISF_LIBCALL (C68LIB ? "*.Ysfltosf" : "*.GYsfltosf")
++
++#define FIXDFSI_LIBCALL (C68LIB ? "*.Ydftol" : "*.GYdftol")
++#define FIXSFSI_LIBCALL (C68LIB ? "*.Ysftol" : "*.GYsftol")
++
++/* float/double compare have even more special calling
++   conventions */
++#if 0
++#define CMPDD3_LIBCALL "*.Xdfcmp"
++#define CMPDF3_LIBCALL "*.Xsfcmp"
++#endif
++#endif /* C68_FLOATMATH */
++
++/* useless for now  */
++#define DBX_DEBUGGING_INFO
++#define ASM_STABS_OP "; .stabs"   /* output as comment */
++#define ASM_STABD_OP "; .stabd" 
++#define ASM_STABN_OP "; .stabn" 
++
++
++#undef CALL_USED_REGISTERS
++#undef FUNCTION_PROFILER
++
++#ifdef MOTOROLA
++#if 0
++#undef FUNCTION_PROLOGUE
++#undef FUNCTION_EPILOGUE
++#endif
++#undef REGISTER_NAMES
++#undef ASM_OUTPUT_REG_PUSH
++#undef ASM_OUTPUT_REG_POP
++#undef ASM_OUTPUT_DOUBLE
++#undef ASM_OUTPUT_SKIP
++#undef ASM_FORMAT_PRIVATE_NAME
++#endif  
++
++#undef ASM_OUTPUT_ALIGN
++
++/* There is no point aligning anything to a rounder boundary than this.  */
++/*#define BIGGEST_ALIGNMENT 16*/
++#define BIGGEST_FIELD_ALIGNMENT 16
++
++/* A bitfield declared as `int' forces `int' alignment for the struct.  */
++#define PCC_BITFIELD_TYPE_MATTERS 0
++/* size of struct multiple of * bits */
++#define STRUCTURE_SIZE_BOUNDARY 16
++#define BITFIELD_NBYTES_LIMITED 1
++#undef EMPTY_FIELD_BOUNDARY
++#define EMPTY_FIELD_BOUNDARY 16
++
++/* for ADJUST_FIELD_ALIGN  see rs6000/rs6000.h */
++  
++/* QDOS makes d0-d2, a0-a1, fp0-fp2 unsaved registers  */
++/* aehm, just guessing the fp regs for now */
++  
++#define CALL_USED_REGISTERS \
++ {1, 1, 1, 0, 0, 0, 0, 0, \
++  1, 1, 0, 0, 0, 0, 0, 1, \
++  1, 1, 1, 0, 0, 0, 0, 0}
++
++
++/* QDOS returns ints, pointers floats and doubles in  d0/d1.  */
++#if 0
++#define FUNCTION_VALUE(VALTYPE,FUNC) LIBCALL_VALUE (TYPE_MODE (VALTYPE))
++
++#define LIBCALL_VALUE(MODE)						   \
++ gen_rtx (REG, (MODE),							   \
++	  ((TARGET_68881						   \
++	    && ((MODE) == SFmode || (MODE) == DFmode || (MODE) == XFmode)) \
++	   ? 16 : 0))
++#endif
++
++/* no info about struct return in C68 */
++#undef PCC_STATIC_STRUCT_RETURN
++#define DEFAULT_PCC_STRUCT_RETURN 0
++
++#define ASM_OUTPUT_ALIGN(FILE,LOG) qdos_asm_output_align(FILE,LOG)
++
++
++#undef FINALIZE_TRAMPOLINE
++#define FINALIZE_TRAMPOLINE(TRAMP)					\
++  emit_library_call (gen_rtx_SYMBOL_REF (Pmode, "_CacheFlush"),	        \
++		     0, VOIDmode, 2, TRAMP, Pmode,			\
++		     plus_constant (TRAMP, TRAMPOLINE_SIZE), Pmode);
++
++
++/* as68 conventions */
++#undef ASM_FILE_START
++#define ASM_FILE_START(FILE) qdos_asm_start_file(FILE)
++
++
++/* Output to assembler file text saying following lines
++   may contain character constants, extra white space, comments, etc.  */
++
++#undef ASM_APP_ON
++#define ASM_APP_ON "; handmade assembler code follows\n"
++
++/* Output to assembler file text saying following lines
++   no longer contain unusual constructs.  */
++
++#undef ASM_APP_OFF 
++#define ASM_APP_OFF "; gcc generated assembler follows\n"
++
++#ifdef MOTOROLA
++
++/* Don't try to define `gcc_compiled.' since the assembler does not
++   accept symbols with periods.  This is no real loss since GDB only
++   really needs it for parms passed in registers.  */
++#define ASM_IDENTIFY_GCC(FILE)  fputs(";gcc2_compiled\n", FILE)
++
++#undef ASM_OUTPUT_INT
++#undef ASM_OUTPUT_LONG
++#undef ASM_OUTPUT_SHORT
++#undef ASM_OUTPUT_CHAR
++#undef ASM_OUTPUT_BYTE
++#undef ASM_BYTE_OP
++
++#define ASM_LONG    "\t.data4"
++#define LONG_ASM_OP "\t.data4"
++
++
++#define ASM_BYTE_OP	"\t.data1\t"
++#define ASM_OUTPUT_INT(FILE,VALUE)  \
++( fprintf ((FILE), IS_GWASS ? "\tDC.L ":"\t.data4 "),			\
++  output_addr_const ((FILE), (VALUE)),		\
++  fprintf (FILE, "\n"))
++
++#define ASM_OUTPUT_LONG(FILE,VALUE)  \
++( fprintf ((FILE), IS_GWASS ? "\tDC.L ":"\t.data4 "),			\
++  output_addr_const ((FILE), (VALUE)),		\
++  fprintf ((FILE), "\n"))
++
++/* Likewise for `char' and `short' constants.  */
++
++#define ASM_OUTPUT_SHORT(FILE,VALUE)  \
++( fprintf ((FILE), IS_GWASS ? "\tDC.W ":"\t.data2 "),			\
++  output_addr_const (FILE, (VALUE)),		\
++  fprintf (FILE, "\n"))
++
++#define ASM_OUTPUT_CHAR(FILE,VALUE)  \
++( fprintf ((FILE), IS_GWASS ? "\tDC.B ":"\t.data1 "),			\
++  output_addr_const (FILE, (VALUE)),		\
++  fprintf (FILE, "\n"))
++
++#undef ASM_OUTPUT_ADDR_DIFF_ELT
++#define ASM_OUTPUT_ADDR_DIFF_ELT(FILE, BODY, VALUE, REL)  \
++  asm_fprintf (FILE, IS_GWASS ? "\tDC.W %LL%d-%LL%d\n" : "\t.data2 %LL%d-%LL%d\n", VALUE, REL)
++
++/* This is how to output an assembler line for a numeric constant byte.  */
++
++#define ASM_OUTPUT_BYTE(FILE,VALUE)  \
++  fprintf (FILE, IS_GWASS ? "\tDC.B $%X\n":"\t.data1 0x%x\n", (VALUE))
++
++
++
++/* Translate Motorola opcodes such as `jbeq'
++   into opcodes such as `beq'.
++*/
++
++#undef ASM_OUTPUT_OPCODE
++#define ASM_OUTPUT_OPCODE(FILE, PTR)			\
++{ if ((PTR)[0] == 'j' && (PTR)[1] == 'b')		\
++    { ++(PTR);						\
++      while (*(PTR) != ' ')				\
++	{ putc (*(PTR), (FILE)); ++(PTR); }		\
++    }                                                   \
++  else if ((PTR)[0] == 'j' && (PTR)[1] == 'c' && (PTR)[2] == 'c') \
++    {putc('b',(FILE));putc('c',(FILE));putc('c',(FILE));(PTR)+=3;}  \
++}
++
++
++/* this had a few problems, fixed output_*logue in m68k.c instead */
++#if 0 
++#define FUNCTION_PROLOGUE(FILE, SIZE)                                 \
++{                                                                     \
++  register int regno;                                                 \
++  register int mask = 0;                                              \
++  int num_saved_regs = 0, first = 1;                                  \
++  extern char call_used_regs[];                                       \
++  int fsize = ((SIZE) + 3) & -4;                                      \
++                                                                      \
++                                                                      \
++  if (frame_pointer_needed)                                           \
++    {                                                                 \
++      /* Adding negative number is faster on the 68040.  */           \
++      if (fsize < 0x8000 && !TARGET_68040)                            \
++	{                                                             \
++	  fprintf (FILE, "\tlink %s,#%d\n", 	                      \
++		       reg_names[FRAME_POINTER_REGNUM], -fsize);      \
++	}                                                             \
++      else if (TARGET_68020)                                          \
++	{                                                             \
++	  fprintf (FILE, "\tlink %s,#%d\n",	                      \
++		       reg_names[FRAME_POINTER_REGNUM], -fsize);      \
++	}                                                             \
++      else                                                            \
++	{                                                             \
++	  fprintf (FILE, "\tlink %s,#0\n\tadd.l #%d,sp\n",	      \
++		       reg_names[FRAME_POINTER_REGNUM], -fsize);      \
++	}							      \
++    }								      \
++  else if (fsize)						      \
++    {								      \
++      /* Adding negative number is faster on the 68040.  */	      \
++      if (fsize + 4 < 0x8000)					      \
++	{							      \
++	  fprintf (FILE, "\tadd.w #%d,sp\n", - (fsize + 4));	      \
++	}							      \
++      else							      \
++	{							      \
++	  fprintf (FILE, "\tadd.l #%d,sp\n", - (fsize + 4));          \
++	}							      \
++    }								      \
++  if (TARGET_68881)                                                    \
++   {                                                                  \
++    for (regno = 23; regno >= 16; regno--)                            \
++      if (regs_ever_live[regno] && ! call_used_regs[regno])           \
++        if (first) {						      \
++          fprintf (FILE, "\tfmovem.x %s", reg_names[regno]);          \
++	  first = 0;						      \
++         }							      \
++        else fprintf (FILE, "/%s", reg_names[regno]);                 \
++    if (!first) fprintf (FILE, ",-(sp)\n");			      \
++   }								      \
++  mask = 0;							      \
++  for (regno = 0; regno < 16; regno++)				      \
++    if (regs_ever_live[regno] && ! call_used_regs[regno])	      \
++      {								      \
++        mask |= 1 << (15 - regno);				      \
++        num_saved_regs++;                   			      \
++      }                                                               \
++  if (frame_pointer_needed)                                           \
++    {                                                                 \
++      mask &= ~ (1 << (15 - FRAME_POINTER_REGNUM));                   \
++      num_saved_regs--;                                               \
++    }                                                                 \
++                                                                      \
++                                                                      \
++  if (num_saved_regs <= 2)                                            \
++    {                                                                 \
++      /* Store each separately in the same order moveml uses.         \
++         Using two movel instructions instead of a single moveml      \
++         is about 15% faster for the 68020 and 68030 at no expense    \
++         in code size */                                              \
++                                                                      \
++      int i;                                                          \
++                                                                      \
++      /* Undo the work from above. */                                 \
++      for (i = 0; i< 16; i++)                                         \
++        if (mask & (1 << i))                                          \
++          fprintf (FILE, "\tmove.l %s,-(sp)\n", reg_names[15 - i]);   \
++    }                                                                 \
++  else if (mask)                                                      \
++    {                                                                 \
++      first = 1;                                                      \
++      for (regno = 0; regno < 16; regno++)                            \
++        if (mask & (1 << regno))                                      \
++          if (first) {                                                \
++            fprintf (FILE, "\tmovem.l %s", reg_names[15 - regno]);    \
++            first = 0;                                                \
++           }                                                          \
++          else fprintf (FILE, "/%s", reg_names[15 - regno]);	      \
++      fprintf (FILE, ",-(sp)\n");	           		      \
++    }                                                                 \
++  if (flag_pic && current_function_uses_pic_offset_table)             \
++    {                                                                 \
++      fprintf (FILE, "\tmove.l #__GLOBAL_OFFSET_TABLE_, %s\n",        \
++		   reg_names[PIC_OFFSET_TABLE_REGNUM]);               \
++      fprintf (FILE, "\tlea.l (pc,%s.l),%s\n",                        \
++		   reg_names[PIC_OFFSET_TABLE_REGNUM],                \
++		   reg_names[PIC_OFFSET_TABLE_REGNUM]);               \
++    }                                                                 \
++}
++
++
++#define FUNCTION_EPILOGUE(FILE, SIZE)                                 \
++{                                                                     \
++  register int regno;                                                 \
++  register int mask, fmask;                                           \
++  register int nregs;                                                 \
++  int offset, foffset, fpoffset, first = 1;		              \
++  extern char call_used_regs[];                                       \
++  int fsize = ((SIZE) + 3) & -4;                                      \
++  int big = 0;                                                        \
++  rtx insn = get_last_insn ();                                        \
++                                                                      \
++  /* If the last insn was a BARRIER, we don't have to write any code.  */ \
++  if (GET_CODE (insn) == NOTE)                                        \
++    insn = prev_nonnote_insn (insn);                                  \
++  if (insn && GET_CODE (insn) == BARRIER)                             \
++    {                                                                 \
++      /* Output just a no-op so that debuggers don't get confused     \
++	 about which function the pc is in at this address.  */       \
++      fprintf (FILE, "\tnop\n");                                      \
++      return;                                                         \
++    }                                                                 \
++                                                                      \
++  nregs = 0;  fmask = 0; fpoffset = 0;                                \
++  for (regno = 16; regno < 24; regno++)                               \
++    if (regs_ever_live[regno] && ! call_used_regs[regno])             \
++      {                                                               \
++        nregs++;                                                      \
++	fmask |= 1 << (23 - regno);                                   \
++      }                                                               \
++  foffset = fpoffset + nregs * 12;                                    \
++  nregs = 0;  mask = 0;                                               \
++  if (frame_pointer_needed)                                           \
++    regs_ever_live[FRAME_POINTER_REGNUM] = 0;                         \
++  for (regno = 0; regno < 16; regno++)                                \
++    if (regs_ever_live[regno] && ! call_used_regs[regno])             \
++      {                                                               \
++        nregs++;                                                      \
++	mask |= 1 << regno;                                           \
++      }                                                               \
++  offset = foffset + nregs * 4;                                       \
++  if (offset + fsize >= 0x8000                                        \
++      && frame_pointer_needed                                         \
++      && (mask || fmask || fpoffset))                                 \
++    {                                                                 \
++      fprintf (FILE, "\tmove.l #%d,a0\n", -fsize);                    \
++      fsize = 0, big = 1;                                             \
++    }                                                                 \
++  if (nregs <= 2)                                                     \
++    {                                                                 \
++      /* Restore each separately in the same order moveml does.       \
++         Using two movel instructions instead of a single moveml      \
++         is about 15% faster for the 68020 and 68030 at no expense    \
++         in code size. */                                             \
++                                                                      \
++      int i;                                                          \
++                                                                      \
++      /* Undo the work from above. */                                 \
++      for (i = 0; i< 16; i++)                                         \
++        if (mask & (1 << i))                                          \
++          {                                                           \
++            if (big)                                                  \
++	      {                                                       \
++		fprintf (FILE, "\tmove.l -%d(%s,a0.l),%s\n",          \
++			     offset + fsize,                          \
++			     reg_names[FRAME_POINTER_REGNUM],         \
++			     reg_names[i]);                           \
++	      }                                                       \
++            else if (! frame_pointer_needed)                          \
++	      {                                                       \
++		fprintf (FILE, "\tmove.l (sp)+,%s\n",                 \
++			     reg_names[i]);                           \
++	      }                                                       \
++            else                                                      \
++	      {                                                       \
++		fprintf (FILE, "\tmove.l -%d(%s),%s\n",               \
++			     offset + fsize,                          \
++			     reg_names[FRAME_POINTER_REGNUM],         \
++			     reg_names[i]);                           \
++	      }                                                       \
++            offset = offset - 4;                                      \
++          }                                                           \
++    }                                                                 \
++  else if (mask)                                                      \
++    {                                                                 \
++      first = 1;						      \
++      for (regno = 0; regno < 16; regno++)                            \
++        if (mask & (1 << regno))                                      \
++          if (first && big) {                                         \
++            fprintf (FILE, "\tmovem.l -%d(%s,a0.l),%s",               \
++		     offset + fsize,                                  \
++		     reg_names[FRAME_POINTER_REGNUM],                 \
++		     reg_names[regno]);                               \
++            first = 0;                                                \
++           }                                                          \
++          else if (first && ! frame_pointer_needed) {                 \
++            fprintf (FILE, "\tmovem.l (sp)+,%s",                      \
++		     reg_names[regno]); /* FIX: RZ*/                  \
++            first = 0;                                                \
++           }                                                          \
++          else if (first) {   				              \
++            fprintf (FILE, "\tmovem.l -%d(%s),%s",                    \
++		     offset + fsize,                                  \
++		     reg_names[FRAME_POINTER_REGNUM],                 \
++		     reg_names[regno]);                               \
++            first = 0;                                                \
++           }                                                          \
++          else  						      \
++	    fprintf (FILE, "/%s", reg_names[regno]);	              \
++      fprintf (FILE, "\n");	                 		      \
++    }                                                                 \
++  if (fmask && TARGET_68881)                                          \
++    {                                                                 \
++      first = 1;						      \
++      for (regno = 16; regno < 24; regno++)                           \
++        if (fmask & (1 << (23 - regno)))                              \
++          if (first && big) {	                                      \
++            fprintf (FILE, "\tfmovem.x -%d(%s,a0.l),%s",              \
++		     foffset + fsize,                                 \
++		     reg_names[FRAME_POINTER_REGNUM],                 \
++		     reg_names[regno]);                               \
++	    first = 0;						      \
++           }                                                          \
++          else if (first && ! frame_pointer_needed) {                 \
++            fprintf (FILE, "\tfmovem.x (sp)+,%s",                     \
++		     reg_names[regno]); /* FIX: RZ */                 \
++	    first = 0;						      \
++           }                                                          \
++          else if (first) {    				              \
++            fprintf (FILE, "\tfmovem.x -%d(%s),%s",                   \
++		     foffset + fsize,                                 \
++		     reg_names[FRAME_POINTER_REGNUM],                 \
++		     reg_names[regno]);                               \
++	    first = 0;						      \
++           }                                                          \
++	  else fprintf (FILE, "/%s", reg_names[regno]); 	      \
++      fprintf (FILE, "\n");					      \
++    }                                                                 \
++  if (frame_pointer_needed)                                           \
++    fprintf (FILE, "\tunlk %s\n",                                     \
++	     reg_names[FRAME_POINTER_REGNUM]);                        \
++  else if (fsize)                                                     \
++    {                                                                 \
++      if (fsize + 4 < 0x8000)                                         \
++	{                                                             \
++	  fprintf (FILE, "\tadd.w #%d,sp\n", fsize + 4);              \
++	}                                                             \
++      else                                                            \
++	{                                                             \
++	  fprintf (FILE, "\tadd.l #%d,sp\n", fsize + 4);              \
++	}                                                             \
++    }                                                                 \
++  if (current_function_pops_args)                                     \
++    fprintf (FILE, "\trtd #%d\n", current_function_pops_args);        \
++  else                                                                \
++    fprintf (FILE, "\trts\n");                                        \
++}
++#endif  /* unused */
++
++#if 1
++#define FUNCTION_PROFILER(FILE, LABEL_NO) \
++   fprintf (FILE, "\tmove.l #LP%d,d0\n\tjsr mcount\n", (LABEL_NO));
++#endif
++
++#define REGISTER_NAMES \
++{"d0", "d1", "d2", "d3", "d4", "d5", "d6", "d7",	\
++ "a0", "a1", "a2", "a3", "a4", "a5", "a6", "sp",	\
++ "fp0", "fp1", "fp2", "fp3", "fp4", "fp5", "fp6", "fp7"}
++
++#define ADDITIONAL_REGISTER_NAMES { "fp", 14, "a7", 15 }
++
++
++/* This is how to output an insn to push a register on the stack.
++   It need not be very fast code (profiler) */
++#if 0
++#define ASM_OUTPUT_REG_PUSH(FILE,REGNO)  \
++  fprintf (FILE, "\tmove.l %s,-(sp)\n", reg_names[REGNO])
++
++/* This is how to output an insn to pop a register from the stack.
++   It need not be very fast code.  */
++
++#define ASM_OUTPUT_REG_POP(FILE,REGNO)  \
++  fprintf (FILE, "\tmove.l (sp)+,%s\n", reg_names[REGNO])
++#endif  
++
++
++#define ASM_OUTPUT_DOUBLE(FILE,VALUE)  \
++do { long l[2];char dstr[30];						\
++     REAL_VALUE_TO_TARGET_DOUBLE (VALUE, l);			\
++     fprintf (FILE, IS_GWASS ?"\tDC.L $%lx,$%lx" :"\t.data4 0x%lx,0x%lx", l[0], l[1]);	\
++     REAL_VALUE_TO_DECIMAL (VALUE, "%.20g", dstr);			\
++     asm_fprintf (FILE, "\t ; %I0r%s\n", dstr);				\
++   } while (0)
++
++#define ASM_OUTPUT_SKIP(FILE,SIZE)  \
++  fprintf (FILE, IS_GWASS?"\tDS.B %u\n":"\t.space %u\n", (SIZE))
++
++
++/* FIX: is it really local? Store in OUTPUT a string (made with alloca) 
++   containing an assembler-name for a local static variable named NAME.
++   LABELNO is an integer which is different for each call.  */
++
++#define ASM_FORMAT_PRIVATE_NAME(OUTPUT, NAME, LABELNO)	\
++( (OUTPUT) = (char *) alloca (strlen ((NAME)) + 13),	\
++  sprintf ((OUTPUT), "%s%d", (NAME), (LABELNO)))
++
++#undef ASM_OUTPUT_FLOAT
++#define ASM_OUTPUT_FLOAT(FILE,VALUE)			\
++do { long l;						\
++     REAL_VALUE_TO_TARGET_SINGLE (VALUE, l);		\
++     fprintf (FILE, IS_GWASS?"DC.L $%lx\n":"\t.data4 0x%lx\n", l);		\
++   } while (0)
++
++
++/* FIX: Output a float value (represented as a C double) as an immediate operand.
++   This macro is a 68k-specific macro.  */
++
++#undef ASM_OUTPUT_FLOAT_OPERAND
++#define ASM_OUTPUT_FLOAT_OPERAND(CODE,FILE,VALUE)			\
++ do {									\
++      if (CODE == 'f')							\
++        {								\
++          char dstr[30];						\
++          REAL_VALUE_TO_DECIMAL (VALUE, "%.9e", dstr);			\
++          if (REAL_VALUE_ISINF (VALUE) || REAL_VALUE_ISNAN (VALUE))	\
++	    {								\
++	      if (REAL_VALUE_NEGATIVE (VALUE))				\
++		fprintf (FILE, "#!-99e999");				\
++	      else							\
++		fprintf (FILE, "#!99e999");				\
++	    }								\
++          else if (REAL_VALUE_MINUS_ZERO (VALUE))			\
++            fprintf (FILE, "#!-0.0");					\
++          else								\
++            fprintf (FILE, "#!%s", dstr); 				\
++        }								\
++      else								\
++        {								\
++          long l;							\
++          REAL_VALUE_TO_TARGET_SINGLE (VALUE, l);			\
++          fprintf (FILE, "#$%lx", l);					\
++        }								\
++     } while (0)
++
++/* FIX: not used? Output a double value (represented as a C double) as an 
++   immediate operand. This macro is a 68k-specific macro.  */
++#undef ASM_OUTPUT_DOUBLE_OPERAND
++#define ASM_OUTPUT_DOUBLE_OPERAND(FILE,VALUE)				\
++ do { char dstr[30];							\
++      REAL_VALUE_TO_DECIMAL (VALUE, "%.20e", dstr );			\
++      if (REAL_VALUE_ISINF (VALUE) || REAL_VALUE_ISNAN (VALUE))		\
++	{								\
++        if (REAL_VALUE_NEGATIVE (VALUE))				\
++          fprintf (FILE, "#!-99e9999");					\
++        else								\
++          fprintf (FILE, "#!99e9999");					\
++	}								\
++      else if (REAL_VALUE_MINUS_ZERO (VALUE))				\
++          fprintf (FILE, "#!-0.0");					\
++      else								\
++          fprintf (FILE, "#!%s", dstr);				\
++    } while (0)
++
++/* FIX: not used? Note, long double immediate operands are not actually
++   generated by m68k.md.  */
++#undef ASM_OUTPUT_LONG_DOUBLE_OPERAND
++#define ASM_OUTPUT_LONG_DOUBLE_OPERAND(FILE,VALUE)			\
++ do { char dstr[30];							\
++      REAL_VALUE_TO_DECIMAL (VALUE, "%.20g", dstr);			\
++      asm_fprintf (FILE, "%I0r%s", dstr);				\
++    } while (0)
++
++#undef ASM_OUTPUT_LONG_DOUBLE
++#define ASM_OUTPUT_LONG_DOUBLE(FILE,VALUE)  				\
++do { long l[3];char dstr[30];						\
++     REAL_VALUE_TO_TARGET_LONG_DOUBLE (VALUE, l);			\
++     fprintf (FILE, IS_GWASS ?"\t.DC.L $%lx,$%lx,$%lx":"\t.data4 0x%lx,0x%lx,0x%lx", l[0], l[1], l[2]);	\
++     REAL_VALUE_TO_DECIMAL (VALUE, "%.20g", dstr);			\
++     asm_fprintf (FILE, "\t ; %I0r%s\n", dstr);				\
++   } while (0)
++  
++
++#undef PRINT_OPERAND_ADDRESS
++
++/* hacked to suit QDOS conventions better, might need more finetuning 
++   old version left below, see also crds.h */
++
++#define PRINT_OPERAND_ADDRESS(FILE, ADDR)  \
++{ register rtx reg1, reg2, breg, ireg;					\
++  register rtx addr = ADDR;						\
++  rtx offset;								\
++  switch (GET_CODE (addr))						\
++    {									\
++    case REG:								\
++      fprintf (FILE, "(%s)", reg_names[REGNO (addr)]);			\
++      break;								\
++    case PRE_DEC:							\
++      fprintf (FILE, "-(%s)", reg_names[REGNO (XEXP (addr, 0))]);	\
++      break;								\
++    case POST_INC:							\
++      fprintf (FILE, "(%s)+", reg_names[REGNO (XEXP (addr, 0))]);	\
++      break;								\
++    case PLUS:								\
++      reg1 = 0;	reg2 = 0;						\
++      ireg = 0;	breg = 0;						\
++      offset = 0;							\
++      if (CONSTANT_ADDRESS_P (XEXP (addr, 0)))				\
++	{								\
++	  offset = XEXP (addr, 0);					\
++	  addr = XEXP (addr, 1);					\
++	}								\
++      else if (CONSTANT_ADDRESS_P (XEXP (addr, 1)))			\
++	{								\
++	  offset = XEXP (addr, 1);					\
++	  addr = XEXP (addr, 0);					\
++	}								\
++      if (GET_CODE (addr) != PLUS) ; /* ?????? */			\
++      else if (GET_CODE (XEXP (addr, 0)) == SIGN_EXTEND)		\
++	{								\
++	  reg1 = XEXP (addr, 0);					\
++	  addr = XEXP (addr, 1);					\
++	}								\
++      else if (GET_CODE (XEXP (addr, 1)) == SIGN_EXTEND)		\
++	{								\
++	  reg1 = XEXP (addr, 1);					\
++	  addr = XEXP (addr, 0);					\
++	}								\
++      else if (GET_CODE (XEXP (addr, 0)) == MULT)			\
++	{								\
++	  reg1 = XEXP (addr, 0);					\
++	  addr = XEXP (addr, 1);					\
++	}								\
++      else if (GET_CODE (XEXP (addr, 1)) == MULT)			\
++	{								\
++	  reg1 = XEXP (addr, 1);					\
++	  addr = XEXP (addr, 0);					\
++	}								\
++      else if (GET_CODE (XEXP (addr, 0)) == REG)			\
++	{								\
++	  reg1 = XEXP (addr, 0);					\
++	  addr = XEXP (addr, 1);					\
++	}								\
++      else if (GET_CODE (XEXP (addr, 1)) == REG)			\
++	{								\
++	  reg1 = XEXP (addr, 1);					\
++	  addr = XEXP (addr, 0);					\
++	}								\
++      if (GET_CODE (addr) == REG || GET_CODE (addr) == MULT		\
++	  || GET_CODE (addr) == SIGN_EXTEND)				\
++	{ if (reg1 == 0) reg1 = addr; else reg2 = addr; addr = 0; }	\
++      if (offset != 0) { if (addr != 0) abort (); addr = offset; }	\
++      if ((reg1 && (GET_CODE (reg1) == SIGN_EXTEND			\
++		    || GET_CODE (reg1) == MULT))			\
++	  || (reg2 != 0 && REGNO_OK_FOR_BASE_P (REGNO (reg2))))		\
++	{ breg = reg2; ireg = reg1; }					\
++      else if (reg1 != 0 && REGNO_OK_FOR_BASE_P (REGNO (reg1)))		\
++	{ breg = reg1; ireg = reg2; }					\
++      if (ireg != 0 && breg == 0 && GET_CODE (addr) == LABEL_REF)	\
++        { int scale = 1;						\
++	  if (GET_CODE (ireg) == MULT)					\
++	    { scale = INTVAL (XEXP (ireg, 1));				\
++	      ireg = XEXP (ireg, 0); }					\
++	  if (GET_CODE (ireg) == SIGN_EXTEND)				\
++	    fprintf (FILE, "L%d(pc,%s.w",				\
++		     CODE_LABEL_NUMBER (XEXP (addr, 0)),		\
++		     reg_names[REGNO (XEXP (ireg, 0))]); 		\
++	  else								\
++	    fprintf (FILE, "L%d(pc,%s.l",				\
++		     CODE_LABEL_NUMBER (XEXP (addr, 0)),		\
++		     reg_names[REGNO (ireg)]);				\
++	  if (scale != 1) fprintf (FILE, "*%d", scale);			\
++	  putc (')', FILE);						\
++	  break; }							\
++      if (breg != 0 && ireg == 0 && GET_CODE (addr) == LABEL_REF)	\
++        { fprintf (FILE, "L%d(pc,%s.l",				        \
++		   CODE_LABEL_NUMBER (XEXP (addr, 0)),			\
++		   reg_names[REGNO (breg)]);				\
++	  putc (')', FILE);						\
++	  break; }							\
++      if (ireg != 0 || breg != 0)					\
++	{ int scale = 1;						\
++	  if (breg == 0)						\
++	    abort ();							\
++	  if (addr && GET_CODE (addr) == LABEL_REF) abort ();		\
++	  if (addr != 0) 						\
++	    output_addr_const (FILE, addr);				\
++          else if (ireg != 0) putc('0',FILE);                           \
++	  putc ('(', FILE); 						\
++	  fprintf (FILE, "%s", reg_names[REGNO (breg)]);		\
++	  if (ireg != 0)						\
++	    putc (',', FILE);						\
++	  if (ireg != 0 && GET_CODE (ireg) == MULT)			\
++	    { scale = INTVAL (XEXP (ireg, 1));				\
++	      ireg = XEXP (ireg, 0); }					\
++	  if (ireg != 0 && GET_CODE (ireg) == SIGN_EXTEND)		\
++	    fprintf (FILE, "%s.w", reg_names[REGNO (XEXP (ireg, 0))]);	\
++	  else if (ireg != 0)						\
++	    fprintf (FILE, "%s.l", reg_names[REGNO (ireg)]);		\
++	  if (scale != 1) fprintf (FILE, "*%d", scale);			\
++	  putc (')', FILE);						\
++	  break;							\
++	}								\
++      else if (reg1 != 0 && GET_CODE (addr) == LABEL_REF)		\
++	{ fprintf (FILE, "L%d(pc,%s.l)",				\
++		   CODE_LABEL_NUMBER (XEXP (addr, 0)),			\
++		   reg_names[REGNO (reg1)]);				\
++	  break; }							\
++    default:								\
++      if (GET_CODE (addr) == CONST_INT					\
++	  && INTVAL (addr) < 0x8000					\
++	  && INTVAL (addr) >= -0x8000)					\
++	fprintf (FILE, "%d", INTVAL (addr));				\
++      else								\
++        output_addr_const (FILE, addr);					\
++    }}
++
++
++#define ASM_OUTPUT_ASCII(MYFILE, MYSTRING, MYLENGTH) \
++  do {									      \
++    FILE *_hide_asm_out_file = (MYFILE);				      \
++    unsigned char *_hide_p = (unsigned char *) (MYSTRING);		      \
++    int _hide_thissize = (MYLENGTH);					      \
++    {									      \
++      FILE *asm_out_file = _hide_asm_out_file;				      \
++      unsigned char *p = _hide_p;					      \
++      int thissize = _hide_thissize;					      \
++      int i,first=1;							      \
++                                                                              \
++      fprintf(asm_out_file,(IS_GWASS)?"\tDC.B ":"\t.data1\t");                \
++      for (i = 0; i < thissize; i++)					      \
++	{								      \
++	  register int c = p[i];					      \
++	  fprintf(asm_out_file,IS_GWASS ?"%s$%X":"%s0x%x",(first?"":","),c);  \
++          first=0;                                                            \
++        }                                                                     \
++      fprintf(asm_out_file,"\n");   \
++  }}									      \
++  while (0)
++
++
++#else /* Using GAS, which uses the MIT assembler syntax, like a Sun.  */
++
++#define FUNCTION_PROFILER(FILE, LABEL_NO) \
++   fprintf (FILE, "\tmovl #LP%d,d0\n\tjsr mcount\n", (LABEL_NO));
++
++#endif /* MOTOROLA */
+diff --git a/gcc/config/m68k/t-qdos b/gcc/config/m68k/t-qdos
+new file mode 100644
+index 0000000..596ccca
+--- /dev/null
++++ b/gcc/config/m68k/t-qdos
+@@ -0,0 +1,47 @@
++# t-qdos
++
++qdos.o: $(srcdir)/config/m68k/qdos.c
++	$(CC) -c $(ALL_CFLAGS) $(ALL_CPPFLAGS) $(INCLUDES) $(srcdir)/config/m68k/qdos.c
++
++
++# don't ever test it
++LIBGCC1_TEST = 
++
++## use this to skip library build
++#CROSS_LIBGCC1 =
++#LIBGCC2 =
++#LIBGCC =
++
++#INSTALL_LIBGCC =
++
++
++## use this to really build the libs
++CROSS_LIBGCC1 = libgcc1-asm.a
++
++LIB1ASMSRC = m68k/lb1sf68-as68.asm
++LIB1ASMFUNCS = _mulsi3 _udivsi3 _divsi3 _umodsi3 _modsi3 \
++   _double _float _floatex \
++   _eqdf2 _nedf2 _gtdf2 _gedf2 _ltdf2 _ledf2 \
++   _eqsf2 _nesf2 _gtsf2 _gesf2 _ltsf2 _lesf2
++
++## These are really part of libgcc1, but this will cause them to be
++## built correctly, so...
++LIB2FUNCS_EXTRA = fpgnulib.c xfgnulib.c
++
++fpgnulib.c: $(srcdir)/config/m68k/fpgnulib.c
++	cp $(srcdir)/config/m68k/fpgnulib.c fpgnulib.c
++xfgnulib.c: $(srcdir)/config/m68k/fpgnulib.c
++	echo '#define EXTFLOAT' > xfgnulib.c
++	cat $(srcdir)/config/m68k/fpgnulib.c >> xfgnulib.c
++
++##we have only 68000 assembler :((
++MULTILIB_OPTIONS = m68000
++##MULTILIB_OPTIONS = m68000/m68020/m5200/mcpu32 m68881/msoft-float
++MULTILIB_DIRNAMES =
++MULTILIB_MATCHES = m68000=mc68000 m68000=m68302 mcpu32=m68332 m68020=mc68020 m68020=m68040 m68020=m68060
++#MULTILIB_EXCEPTIONS = m68000/msoft-float m5200/m68881 m5200/msoft-float mcpu32/m68881 mcpu32/msoft-float
++
++LIBGCC = stmp-multilib
++INSTALL_LIBGCC = install-multilib
++
++
+diff --git a/gcc/config/m68k/xm-qdos.h b/gcc/config/m68k/xm-qdos.h
+new file mode 100644
+index 0000000..fc52c86
+--- /dev/null
++++ b/gcc/config/m68k/xm-qdos.h
+@@ -0,0 +1,4 @@
++/* Configuration for GCC for Motorola m68k running QDOS systems. */
++
++#include <m68k/xm-m68k.h>
++
+diff --git a/gcc/configure b/gcc/configure
+index 38d3db4..ce5aea2 100755
+--- a/gcc/configure
++++ b/gcc/configure
+@@ -4289,6 +4289,13 @@ for machine in $build $host $target; do
+ 		extra_headers=math-68881.h
+ 		float_format=m68k
+ 		;;
++	*qdos*|*QDOS*)
++	        tm_file=m68k/qdos.h
++		tmake_file=m68k/t-qdos
++		extra_objs=qdos.o
++		xm_file="m68k/xm-qdos.h"
++		float_format=m68k
++		;;
+ 	m68k-next-nextstep2*)
+ 		tm_file=m68k/next21.h
+ 		xm_file="m68k/xm-next.h ${xm_file}"
+diff --git a/gcc/configure.in b/gcc/configure.in
+index 55dcec7..1cf964c 100644
+--- a/gcc/configure.in
++++ b/gcc/configure.in
+@@ -1961,6 +1961,13 @@ changequote([,])dnl
+ 		extra_headers=math-68881.h
+ 		float_format=m68k
+ 		;;
++	*qdos*|*QDOS*)
++		tm_file=m68k/qdos.h
++		tmake_file=m68k/t-qdos
++		extra_objs=qdos.o
++		xm_file="m68k/xm-qdos.h"
++		float_format=m68k
++		;;
+ 	m68k-next-nextstep2*)
+ 		tm_file=m68k/next21.h
+ 		xm_file="m68k/xm-next.h ${xm_file}"
+diff --git a/gcc/floatlib.c b/gcc/floatlib.c
+index dc79139..aa6a5a5 100644
+--- a/gcc/floatlib.c
++++ b/gcc/floatlib.c
+@@ -357,6 +357,7 @@ __divsf3 (float a1, float a2)
+   return (fl1.f);
+ }
+ 
++#ifndef QDOS
+ /* convert int to double */
+ double
+ __floatsidf (register long a1)
+@@ -396,6 +397,7 @@ __floatsidf (register long a1)
+ 
+   return (dl.d);
+ }
++#endif /* QDOS */
+ 
+ double
+ __floatdidf (register long long a1)
+@@ -674,6 +676,7 @@ __fixunsdfdi (double a1)
+ }
+ 
+ /* addtwo doubles */
++#ifndef QDOS
+ double
+ __adddf3 (double a1, double a2)
+ {
+@@ -780,6 +783,7 @@ __subdf3 (double a1, double a2)
+ 	return (fl2.d);
+     return __adddf3 (a1, fl2.d);
+ }
++#endif /* QDOS */
+ 
+ /* multiply two doubles */
+ double
+@@ -836,6 +840,7 @@ test_done:
+ }
+ 
+ /* divide two doubles */
++#ifndef QDOS
+ double
+ __divdf3 (double a1, double a2)
+ {
+@@ -907,6 +912,7 @@ __divdf3 (double a1, double a2)
+ test_done:
+     return (fl1.d);
+ }
++#endif /* QDOS */
+ 
+ int
+ __gtdf2 (double a1, double a2)
+diff --git a/gcc/libgcc2.c b/gcc/libgcc2.c
+index 6d8fb0b..80d22d7 100644
+--- a/gcc/libgcc2.c
++++ b/gcc/libgcc2.c
+@@ -32,10 +32,21 @@ Boston, MA 02111-1307, USA.  */
+ 
+ #include "tconfig.h"
+ 
++
++/* In a cross-compilation situation, default to inhibiting compilation
++   of routines that use libc.  */
++
++#if defined(CROSS_COMPILE) && !defined(inhibit_libc)
++#define inhibit_libc
++#endif
++
++
+ /* We disable this when inhibit_libc, so that gcc can still be built without
+    needing header files first.  */
+ /* ??? This is not a good solution, since prototypes may be required in
+    some cases for correct code.  See also frame.c.  */
++
++
+ #ifndef inhibit_libc
+ /* fixproto guarantees these system headers exist. */
+ #include <stdlib.h>
+@@ -57,12 +68,6 @@ Boston, MA 02111-1307, USA.  */
+ #define WEAK_ALIAS
+ #endif
+ 
+-/* In a cross-compilation situation, default to inhibiting compilation
+-   of routines that use libc.  */
+-
+-#if defined(CROSS_COMPILE) && !defined(inhibit_libc)
+-#define inhibit_libc
+-#endif
+ 
+ /* Permit the tm.h file to select the endianness to use just for this
+    file.  This is used when the endianness is determined when the
+@@ -2618,7 +2623,7 @@ mprotect (char *addr, int len, int prot)
+ #endif /* WINNT && ! __CYGWIN__ && ! _UWIN */
+ 
+ #ifdef TRANSFER_FROM_TRAMPOLINE 
+-TRANSFER_FROM_TRAMPOLINE 
++TRANSFER_FROM_TRAMPOLINE
+ #endif
+ 
+ #if defined (NeXT) && defined (__MACH__)
+diff --git a/gcc/longlong.h b/gcc/longlong.h
+index d1859ef..3672a2b 100644
+--- a/gcc/longlong.h
++++ b/gcc/longlong.h
+@@ -517,7 +517,7 @@ UDItype __umulsidi3 (USItype, USItype);
+ #if !defined(__mcf5200__)
+ /* %/ inserts REGISTER_PREFIX, %# inserts IMMEDIATE_PREFIX.  */
+ #define umul_ppmm(xh, xl, a, b) \
+-  __asm__ ("| Inlined umul_ppmm
++  __asm__ (";| Inlined umul_ppmm
+ 	move%.l	%2,%/d0
+ 	move%.l	%3,%/d1
+ 	move%.l	%/d0,%/d2
+@@ -534,7 +534,7 @@ UDItype __umulsidi3 (USItype, USItype);
+ 	swap	%/d0
+ 	add%.l	%/d0,%/d2
+ 	add%.l	%/d3,%/d2
+-	jcc	1f
++	bcc	1f
+ 	add%.l	%#65536,%/d1
+ 1:	swap	%/d2
+ 	moveq	%#0,%/d0
+diff --git a/gcc/optabs.c b/gcc/optabs.c
+index b360262..c8f80c0 100644
+--- a/gcc/optabs.c
++++ b/gcc/optabs.c
+@@ -4645,6 +4645,41 @@ init_optabs ()
+     = gen_rtx_SYMBOL_REF (Pmode, UMODDI3_LIBCALL);
+ #endif
+ 
++
++#ifdef DIVDD3_LIBCALL
++  flodiv_optab->handlers[(int) DFmode].libfunc
++    = gen_rtx_SYMBOL_REF (Pmode, DIVDD3_LIBCALL);
++#endif
++#ifdef DIVDF3_LIBCALL
++  flodiv_optab->handlers[(int) SFmode].libfunc
++    = gen_rtx_SYMBOL_REF (Pmode, DIVDF3_LIBCALL);
++#endif
++#ifdef MULDD3_LIBCALL
++  smul_optab->handlers[(int) DFmode].libfunc
++    = gen_rtx_SYMBOL_REF (Pmode, MULDD3_LIBCALL);  
++#endif
++#ifdef MULDF3_LIBCALL
++  smul_optab->handlers[(int) SFmode].libfunc
++    = gen_rtx_SYMBOL_REF (Pmode, MULDF3_LIBCALL);  
++#endif
++#ifdef ADDD3_LIBCALL
++  add_optab->handlers[(int) DFmode].libfunc
++    = gen_rtx_SYMBOL_REF (Pmode, ADDD3_LIBCALL);
++#endif
++#ifdef ADDF3_LIBCALL
++  add_optab->handlers[(int) SFmode].libfunc
++    = gen_rtx_SYMBOL_REF (Pmode, ADDF3_LIBCALL);
++#endif
++#ifdef SUBDD3_LIBCALL
++  sub_optab->handlers[(int) DFmode].libfunc
++    = gen_rtx_SYMBOL_REF (Pmode, SUBDD3_LIBCALL);
++#endif
++#ifdef SUBDF3_LIBCALL
++  sub_optab->handlers[(int) SFmode].libfunc
++    = gen_rtx_SYMBOL_REF (Pmode, SUBDF3_LIBCALL);
++#endif
++
++
+   /* Use cabs for DC complex abs, since systems generally have cabs.
+      Don't define any libcall for SCmode, so that cabs will be used.  */
+   abs_optab->handlers[(int) DCmode].libfunc
+@@ -4657,13 +4692,20 @@ init_optabs ()
+   ffs_optab->handlers[(int) mode_for_size (INT_TYPE_SIZE, MODE_INT, 0)] .libfunc
+     = gen_rtx_SYMBOL_REF (Pmode, "ffs");
+ 
+-  extendsfdf2_libfunc = gen_rtx_SYMBOL_REF (Pmode, "__extendsfdf2");
++#ifndef EXTENDSFDF2_LIBCALL
++#define EXTENDSFDF2_LIBCALL "__extendsfdf2"
++#endif
++#ifndef TRUNCDFSF2_LIBCALL
++#define TRUNCDFSF2_LIBCALL "__truncdfsf2"
++#endif
++
++  extendsfdf2_libfunc = gen_rtx_SYMBOL_REF (Pmode, EXTENDSFDF2_LIBCALL);
+   extendsfxf2_libfunc = gen_rtx_SYMBOL_REF (Pmode, "__extendsfxf2");
+   extendsftf2_libfunc = gen_rtx_SYMBOL_REF (Pmode, "__extendsftf2");
+   extenddfxf2_libfunc = gen_rtx_SYMBOL_REF (Pmode, "__extenddfxf2");
+   extenddftf2_libfunc = gen_rtx_SYMBOL_REF (Pmode, "__extenddftf2");
+ 
+-  truncdfsf2_libfunc = gen_rtx_SYMBOL_REF (Pmode, "__truncdfsf2");
++  truncdfsf2_libfunc = gen_rtx_SYMBOL_REF (Pmode, TRUNCDFSF2_LIBCALL);
+   truncxfsf2_libfunc = gen_rtx_SYMBOL_REF (Pmode, "__truncxfsf2");
+   trunctfsf2_libfunc = gen_rtx_SYMBOL_REF (Pmode, "__trunctfsf2");
+   truncxfdf2_libfunc = gen_rtx_SYMBOL_REF (Pmode, "__truncxfdf2");
+@@ -4725,11 +4767,24 @@ init_optabs ()
+   lttf2_libfunc = gen_rtx_SYMBOL_REF (Pmode, "__lttf2");
+   letf2_libfunc = gen_rtx_SYMBOL_REF (Pmode, "__letf2");
+ 
+-  floatsisf_libfunc = gen_rtx_SYMBOL_REF (Pmode, "__floatsisf");
++#ifndef FLOATSISF_LIBCALL
++#define FLOATSISF_LIBCALL "__floatsisf"
++#endif
++#ifndef FLOATSIDF_LIBCALL
++#define FLOATSIDF_LIBCALL "__floatsidf"
++#endif
++#ifndef FIXDFSI_LIBCALL
++#define FIXDFSI_LIBCALL "__fixdfsi"
++#endif
++#ifndef FIXSFSI_LIBCALL
++#define FIXSFSI_LIBCALL "__fixsfsi"
++#endif
++
++  floatsisf_libfunc = gen_rtx_SYMBOL_REF (Pmode, FLOATSISF_LIBCALL);
+   floatdisf_libfunc = gen_rtx_SYMBOL_REF (Pmode, "__floatdisf");
+   floattisf_libfunc = gen_rtx_SYMBOL_REF (Pmode, "__floattisf");
+ 
+-  floatsidf_libfunc = gen_rtx_SYMBOL_REF (Pmode, "__floatsidf");
++  floatsidf_libfunc = gen_rtx_SYMBOL_REF (Pmode, FLOATSIDF_LIBCALL);
+   floatdidf_libfunc = gen_rtx_SYMBOL_REF (Pmode, "__floatdidf");
+   floattidf_libfunc = gen_rtx_SYMBOL_REF (Pmode, "__floattidf");
+ 
+@@ -4741,11 +4796,11 @@ init_optabs ()
+   floatditf_libfunc = gen_rtx_SYMBOL_REF (Pmode, "__floatditf");
+   floattitf_libfunc = gen_rtx_SYMBOL_REF (Pmode, "__floattitf");
+ 
+-  fixsfsi_libfunc = gen_rtx_SYMBOL_REF (Pmode, "__fixsfsi");
++  fixsfsi_libfunc = gen_rtx_SYMBOL_REF (Pmode, FIXSFSI_LIBCALL);
+   fixsfdi_libfunc = gen_rtx_SYMBOL_REF (Pmode, "__fixsfdi");
+   fixsfti_libfunc = gen_rtx_SYMBOL_REF (Pmode, "__fixsfti");
+ 
+-  fixdfsi_libfunc = gen_rtx_SYMBOL_REF (Pmode, "__fixdfsi");
++  fixdfsi_libfunc = gen_rtx_SYMBOL_REF (Pmode, FIXDFSI_LIBCALL);
+   fixdfdi_libfunc = gen_rtx_SYMBOL_REF (Pmode, "__fixdfdi");
+   fixdfti_libfunc = gen_rtx_SYMBOL_REF (Pmode, "__fixdfti");
+ 
+diff --git a/gcc/sys-types.h b/gcc/sys-types.h
+index 7db46f1..4bbea28 100644
+--- a/gcc/sys-types.h
++++ b/gcc/sys-types.h
+@@ -83,7 +83,10 @@ struct ypall_callback;
+ union wait;
+ 
+ /* Get size_t and wchar_t.  */
+-#include <stddef.h>
++/*#include <stddef.h>*/
++typedef int size_t;
++typedef int wchar_t;
++
+ 
+ /* #include "sys/types.h" */
+ #define ssize_t int
+diff --git a/qdos/as b/qdos/as
+new file mode 100644
+index 0000000..cd9b851
+--- /dev/null
++++ b/qdos/as
+@@ -0,0 +1,87 @@
++#!/bin/bash 
++
++
++as68="/usr/local/qdos-gcc/bin/as68"
++cmdline="$*"
++opt=""
++src=""
++obj=""
++def=""
++flag="0"
++
++
++
++for i in $cmdline ; do
++	case "$1" in
++		-D*)
++			def="$def $1"
++			;;
++		-o)
++			shift 1
++			obj=" -o $1"
++			;;
++		-gwass)
++		        echo 1>&2 "GWass not yet supported"  
++		        ;;
++		-*)
++			opt="$opt$1 "
++			;;
++		*)
++			if [ "$1" != "" ] ; then 
++				if [ "$src" == "" ] ; then
++					src="$1"
++				else
++					echo 1>&2 "$0: extraneous $1 filename !"
++					exit 1
++				fi
++			fi
++			;;
++	esac
++	shift 1
++done
++
++
++if [ "$src" != "" ] ; then
++	head -1 $src | grep '#' >/dev/null
++	if [ "$?" == "0" ] ; then
++		flag="1"
++	fi
++fi
++
++
++if [ $flag == 1 ] ; then
++	parts=`echo $src | sed -e 'y/\// /'`
++	if [ "${parts:0:1}" == " " ] ; then
++		base="/"
++	else
++		base="./"
++	fi
++	for i in $parts ; do
++		if [ -d "$base$i" ] ; then
++			base="$base$i/"
++		else
++			break
++		fi
++	done
++	if [ "$base" != "./" ] ; then
++		cpp_opt="-P -I $base"
++	else
++		cpp_opt="-P"
++	fi
++	mv -f $src $src.bak.$$
++	tail +2 $src.bak.$$ | cpp $cpp_opt$def -o $src -
++	if (( "$?" == "0" )) ; then
++		$as68 $opt$src$obj
++	fi
++	result=$?
++	if [ "$result" != "0" ] ; then
++		cp -f $src $src.i
++		echo "Faulty pre-processed source saved as: $src.i"
++	fi
++	mv -f $src.bak.$$ $src
++else
++	$as68 $opt$src$obj
++	result="$?"
++fi
++
++exit $result
+diff --git a/qdos/c68.interoperability b/qdos/c68.interoperability
+new file mode 100644
+index 0000000..6a726ca
+--- /dev/null
++++ b/qdos/c68.interoperability
+@@ -0,0 +1,194 @@
++Documented c68 - gcc incompabilities:
++
++Struct alignment, element size:
++================
++          struct foo1
++          {
++            char x;
++            char :0;
++            char y;
++          };  /* gcc: sizeof == 4 */
++              /* c68: sizeof == 8 */
++          struct foo2
++          {
++            char x;
++            int :0;
++            char y;
++          };   /* gcc: sizeof == 4 */
++               /* c68: sizeof == 8 */
++
++          struct foo3 {
++            char x;
++            int :6;
++            char y;
++          };   /* gcc: sizeof == 4 */
++               /* c68: sizeof == 8 */
++
++          struct foo4
++	  {
++            char x;
++            int :9;
++            char y;
++	  };   /* gcc: sizeof == 6 */
++               /* c68: sizeof == 8 */
++
++
++          struct foo5
++	  {
++	    char a:4;
++	    char b:4;
++	  };   /* gcc: sizeof == 2 */
++               /* c68: sizeof == 4 */
++
++          struct foo6
++	  {
++	    int a:4;
++	    int b:4;
++	  };   /* gcc: sizeof == 2 */
++               /* c68: sizeof == 4 */
++
++          struct foo7
++	  {
++	    int a:6;
++	    int b:6;
++	  };   /* gcc: sizeof == 2 */
++               /* c68: sizeof == 4 */
++
++Struct return: completely incompatible in all details, example:
++=============
++
++typedef struct {char a; char b;} l1;
++typedef struct {short a; short b;} l2;
++typedef struct {int a; int b;} l3;
++typedef struct {double a; double b;} l4;
++
++l1 f1(l1 x) /* c68: return addr is hidden 1st arg, returns addr of struct */
++{           /* gcc: return word in D0 */
++  printf("%p\n",&x);
++  return x;   
++}
++l2 f2(l2 x) 
++{           /* gcc: return long in D0 */
++  printf("%p\n",&x);
++  return x;
++}
++l3 f3(l3 x)
++{           /* gcc: return in D0/D1 */
++  printf("%p\n",&x);
++  return x;
++}
++l4 f4(l4 x)
++{           /* gcc: pass return addr in A1, returns struct addr in D0 */
++  printf("%p\n",&x);
++  return x;
++}
++
++  l1 x1;
++  l2 x2;
++  l3 x3;
++  l4 x4;
++
++main()
++{
++  x1=f1(x1);
++  x2=f2(x2);
++  x3=f3(x3);
++  x4=f4(x4);
++}
++
++;; gcc generates this code:
++
++	.sect	.text
++	.sect	.rom
++	.sect	.data
++	.sect	.bss
++
++	.sect	.text
++LC0:
++	.data1	0x25,0x70,0xa,0x0
++	.align 2
++	.extern _f1
++_f1:
++	link a6,#0
++	pea 8(a6)
++	pea LC0
++	bsr _printf
++	move.w 8(a6),d0
++	unlk a6
++	rts
++	.align 2
++	.extern _f2
++_f2:
++	link a6,#0
++	pea 8(a6)
++	pea LC0
++	bsr _printf
++	move.l 8(a6),d0
++	unlk a6
++	rts
++	.align 2
++	.extern _f3
++_f3:
++	link a6,#0
++	pea 8(a6)
++	pea LC0
++	bsr _printf
++	move.l 8(a6),d0
++	move.l 12(a6),d1
++	unlk a6
++	rts
++	.align 2
++	.extern _f4
++_f4:
++	link a6,#0
++	move.l d3,-(sp)
++	move.l a1,d3
++	pea 8(a6)
++	pea LC0
++	bsr _printf
++	move.l d3,a0
++	move.l 8(a6),(a0)+
++	move.l 12(a6),(a0)+
++	move.l 16(a6),(a0)+
++	move.l 20(a6),(a0)
++	move.l d3,d0
++	move.l -4(a6),d3
++	unlk a6
++	rts
++	.align 2
++	.extern _main
++_main:
++	link a6,#0
++	bsr ___main
++	move.w _x1,-(sp)
++	bsr _f1
++	move.w d0,_x1
++	move.l _x2,-(sp)
++	bsr _f2
++	move.l d0,_x2
++	move.l _x3+4,-(sp)
++	move.l _x3,-(sp)
++	bsr _f3
++	move.l d0,_x3
++	move.l d1,_x3+4
++	move.l _x4+12,-(sp)
++	move.l _x4+8,-(sp)
++	lea _x4+4,a1
++	move.l (a1),-(sp)
++	move.l -(a1),-(sp)
++	bsr _f4
++	unlk a6
++	rts
++	.sect	.bss
++	.extern	_x1
++_x1:
++	.space	2
++	.extern	_x2
++_x2:
++	.space	4
++	.extern	_x3
++_x3:
++	.space	8
++	.extern	_x4
++_x4:
++	.space	16
+diff --git a/qdos/ld b/qdos/ld
+new file mode 100644
+index 0000000..6cbd8c3
+--- /dev/null
++++ b/qdos/ld
+@@ -0,0 +1,23 @@
++#!/bin/sh
++# shell script to mangle c68-ld arguments
++
++
++args=$@
++
++ac_prev=""
++out_args=""
++
++for args
++do
++ if test -n "$ac_prev" ; then
++   ac_prev=""
++   out_args="$out_args -o$args"
++   continue
++ fi
++ case $args in
++   -o) ac_prev="-o";;
++   *) out_args="$out_args $args";;
++esac
++done
++
++/usr/local/qdos-gcc/bin/ld-c68 $out_args
+diff --git a/qdos/qdos-ar b/qdos/qdos-ar
+new file mode 100644
+index 0000000..3c5592c
+--- /dev/null
++++ b/qdos/qdos-ar
+@@ -0,0 +1,31 @@
++#!/bin/sh                                                                       
++
++flags=$1
++libname=$2
++
++shift
++shift
++
++PATH=/usr/local/qdos-gcc/bin:$PATH
++
++case $flags in
++   -*) ;;
++   *) flags="-$flags" ;;
++esac
++
++case $flags in
++   -rc|-rcv|-r|-c)
++      slb $flags -ek $libname $@
++      # qdos-ranlib $libname  # slows down too much
++     ;;
++   -x|-xv)
++    ( for f in $@ ; do echo $f ; done ) |  slb $flags -m- $libname
++    ;;
++   *)
++     echo 'Sorry, only -rc or -x '
++     exit 127
++     ;;
++esac
++
++exit 0
++
+diff --git a/qdos/qdos-ranlib b/qdos/qdos-ranlib
+new file mode 100644
+index 0000000..247311a
+--- /dev/null
++++ b/qdos/qdos-ranlib
+@@ -0,0 +1,21 @@
++#!/bin/sh                                                                       
++
++libname=$1
++
++PATH=/usr/local/qdos-gcc/bin:$PATH
++
++bdir=`pwd`
++mkdir /tmp/ranlib-tmp-$PPID
++cp $libname /tmp/ranlib-tmp-$PPID/libxx-old.a
++cd /tmp/ranlib-tmp-$PPID
++#slb -L- $libname.old | tsort | slb -cvek -m- $libname
++slb -Lmlist libxx-old.a 
++tsort mlist >slist 
++slb -x libxx-old.a
++slb -rcekv -mslist libxx.a 
++cd $bdir
++cp /tmp/ranlib-tmp-$PPID/libxx.a $libname
++rm -rf /tmp/ranlib-tmp-$PPID
++
++exit 0
++
+-- 
+2.20.1
+

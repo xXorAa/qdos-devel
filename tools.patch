@@ -1,0 +1,209 @@
+diff --git a/as68/Makefile b/as68/Makefile
+index 8c4b067..c464b1d 100644
+--- a/as68/Makefile
++++ b/as68/Makefile
+@@ -1,7 +1,7 @@
+ VPATH = ../
+ 
+ GCFLAGS = -O6 -s -pipe
+-CFLAGS =   $(GCFLAGS) -DXTC68 -DLABELDIFF -DUSELINE -DMINIX -DLITTLE_ENDIAN 
++CFLAGS =   $(GCFLAGS) -std=gnu89 -DXTC68 -DLABELDIFF -DUSELINE -DMINIX -DLITTLE_ENDIAN 
+ LDFLAGS = 
+ 
+ OBJS = cbuf.o cpy.o gen.o hdr.o lex.o main.o ops.o \
+diff --git a/ld/Makefile b/ld/Makefile
+index 16b4870..88ff7c7 100644
+--- a/ld/Makefile
++++ b/ld/Makefile
+@@ -2,7 +2,7 @@ VPATH = ../
+ 
+ OBJS = ld.o
+ 
+-CFLAGS = -DXTC68 -O2 -s -pipe
++CFLAGS = -DXTC68 -O2 -s -pipe -std=gnu89
+ 
+ ld: $(OBJS)
+ 	$(CC) $(CFLAGS) -o ld $(OBJS)
+diff --git a/ld/ldold.c b/ld/ldold.c
+index 8e5ebe4..25f263d 100644
+--- a/ld/ldold.c
++++ b/ld/ldold.c
+@@ -1691,7 +1691,7 @@ void command_line(int   *xac, char  ***xav, char **paths, char *lib_arr)
+        if(ldd == NULL)
+        {
+ #ifdef __unix__
+-           ldd = strdup("/usr/local/qdos/lib/");
++           ldd = strdup("/usr/local/qdos-gcc/lib/");
+ #else
+            ldd = strdup("c:/qllib/");
+ #endif
+diff --git a/scripts/as b/scripts/as
+index d8a2ec2..0cd887f 100755
+--- a/scripts/as
++++ b/scripts/as
+@@ -1,6 +1,6 @@
+ #!/bin/sh 
+ 
+-as68="/usr/local/qdos/bin/as68"
++as68="/usr/local/qdos-gcc/bin/as68"
+ # you may use a specific cpp version. E.g.:
+ #
+ # version=`qdos-gcc --version`
+diff --git a/scripts/post-gcc-install b/scripts/post-gcc-install
+index d12b2b8..18bb823 100755
+--- a/scripts/post-gcc-install
++++ b/scripts/post-gcc-install
+@@ -1,6 +1,6 @@
+ #!/bin/sh
+ 
+-slb=/usr/local/qdos/bin/slb
++slb=/usr/local/qdos-gcc/bin/slb
+ 
+ version=`/usr/local/bin/qdos-gcc --version`
+ cd /usr/local/lib/gcc-lib/qdos/$version/
+@@ -20,11 +20,11 @@ rm -rf libgcc/
+ # Replace the useless m68000/libgcc.a with a soft link
+ ln -sf /usr/local/lib/gcc-lib/qdos/$version/libgcc.a m68000/libgcc.a
+ # Add a link to libgcc.a into the qdos library directory
+-ln -sf /usr/local/lib/gcc-lib/qdos/$version/libgcc.a /usr/local/qdos/lib/libgcc.a
++ln -sf /usr/local/lib/gcc-lib/qdos/$version/libgcc.a /usr/local/qdos-gcc/lib/libgcc.a
+ 
+ # Add soft links to the qdos as and ld script/binary
+-ln -sf /usr/local/qdos/bin/as as
+-ln -sf /usr/local/qdos/bin/ld ld
++ln -sf /usr/local/qdos-gcc/bin/as as
++ln -sf /usr/local/qdos-gcc/bin/ld ld
+ 
+ # Strip all the cumbersome debugging symbols out of the binaries
+ strip -s cc1 collect2 cpp
+@@ -33,17 +33,17 @@ strip -s cc1 collect2 cpp
+ cd /usr/local/bin
+ # Strip all the cumbersome debugging symbols out of the binaries
+ strip -s cpp gcov qdos-gcc qdos-protoize qdos-unprotoize
+-# Move all qdos related binaries to /usr/local/qdos/bin and
++# Move all qdos related binaries to /usr/local/qdos-gcc/bin and
+ # replace them with soft links...
+-mv -f  cpp gcov qdos-gcc qdos-protoize qdos-unprotoize ../qdos/bin/
+-ln -sf ../qdos/bin/cpp qdos-cpp
+-ln -sf ../qdos/bin/gcov qdos-gcov
+-ln -sf ../qdos/bin/qdos-gcc qdos-gcc
+-ln -sf ../qdos/bin/qdos-protoize qdos-protoize
+-ln -sf ../qdos/bin/qdos-unprotoize qdos-unprotoize
+-
+-# Finally, tidy up things in /usr/local/qdos/bin
+-cd /usr/local/qdos/bin
++mv -f  cpp gcov qdos-gcc qdos-protoize qdos-unprotoize ../qdos-gcc/bin/
++ln -sf ../qdos-gcc/bin/cpp qdos-cpp
++ln -sf ../qdos-gcc/bin/gcov qdos-gcov
++ln -sf ../qdos-gcc/bin/qdos-gcc qdos-gcc
++ln -sf ../qdos-gcc/bin/qdos-protoize qdos-protoize
++ln -sf ../qdos-gcc/bin/qdos-unprotoize qdos-unprotoize
++
++# Finally, tidy up things in /usr/local/qdos-gcc/bin
++cd /usr/local/qdos-gcc/bin
+ # Remove useless gcc and make it a link to qdos-gcc, also add cc
+ rm -f gcc
+ ln -sf qdos-gcc gcc
+diff --git a/scripts/qdos-ar b/scripts/qdos-ar
+index e31d01e..3f4ee80 100755
+--- a/scripts/qdos-ar
++++ b/scripts/qdos-ar
+@@ -1,6 +1,6 @@
+ #!/bin/sh                                                                       
+ 
+-slb=/usr/local/qdos/bin/slb
++slb=/usr/local/qdos-gcc/bin/slb
+ flags=$1
+ libname=$2
+ 
+diff --git a/scripts/qdos-ranlib b/scripts/qdos-ranlib
+index 785aa60..c2c88da 100755
+--- a/scripts/qdos-ranlib
++++ b/scripts/qdos-ranlib
+@@ -1,6 +1,6 @@
+ #!/bin/sh                                                                       
+ 
+-slb=/usr/local/qdos/bin/slb
++slb=/usr/local/qdos-gcc/bin/slb
+ bdir=`pwd`
+ libname="$1"
+ 
+diff --git a/scripts/qdos-utils-install b/scripts/qdos-utils-install
+index 97dc09d..d6408c9 100755
+--- a/scripts/qdos-utils-install
++++ b/scripts/qdos-utils-install
+@@ -1,32 +1,32 @@
+ #!/bin/sh
+ 
+ # First ensure that all directories exist
+-if ! [ -d /usr/local/qdos ] ; then
+-	mkdir /usr/local/qdos
++if ! [ -d /usr/local/qdos-gcc ] ; then
++	mkdir /usr/local/qdos-gcc
+ fi
+-if ! [ -d /usr/local/qdos/bin ] ; then
+-	mkdir /usr/local/qdos/bin
++if ! [ -d /usr/local/qdos-gcc/bin ] ; then
++	mkdir /usr/local/qdos-gcc/bin
+ fi
+-if ! [ -d /usr/local/qdos/lib ] ; then
+-	mkdir /usr/local/qdos/lib
++if ! [ -d /usr/local/qdos-gcc/lib ] ; then
++	mkdir /usr/local/qdos-gcc/lib
+ fi
+-if ! [ -d /usr/local/qdos/include ] ; then
+-	mkdir /usr/local/qdos/include
++if ! [ -d /usr/local/qdos-gcc/include ] ; then
++	mkdir /usr/local/qdos-gcc/include
+ fi
+ 
+ # Copy the utilities
+-cp -f as68/as68 /usr/local/qdos/bin/
+-cp -f ld/ld /usr/local/qdos/bin/
+-cp -f slb/slb /usr/local/qdos/bin/
++cp -f as68/as68 /usr/local/qdos-gcc/bin/
++cp -f ld/ld /usr/local/qdos-gcc/bin/
++cp -f slb/slb /usr/local/qdos-gcc/bin/
+ 
+ # Copy the scripts
+-cp -f scripts/qdos-ar /usr/local/qdos/bin/
+-cp -f scripts/qdos-ranlib /usr/local/qdos/bin/
+-cp -f scripts/as /usr/local/qdos/bin/
++cp -f scripts/qdos-ar /usr/local/qdos-gcc/bin/
++cp -f scripts/qdos-ranlib /usr/local/qdos-gcc/bin/
++cp -f scripts/as /usr/local/qdos-gcc/bin/
+ 
+ # Add soft links to usr/local/bin
+-ln -sf /usr/local/qdos/bin/slb /usr/local/bin/slb
+-ln -sf /usr/local/qdos/bin/qdos-ar /usr/local/bin/qdos-ar
+-ln -sf /usr/local/qdos/bin/qdos-ranlib /usr/local/bin/qdos-ranlib
++# ln -sf /usr/local/qdos/bin/slb /usr/local/bin/slb
++ln -sf /usr/local/qdos-gcc/bin/qdos-ar /usr/local/bin/qdos-ar
++ln -sf /usr/local/qdos-gcc/bin/qdos-ranlib /usr/local/bin/qdos-ranlib
+ 
+ exit 0
+diff --git a/slb/Makefile b/slb/Makefile
+index 5a2f34e..0784c75 100644
+--- a/slb/Makefile
++++ b/slb/Makefile
+@@ -7,7 +7,7 @@
+ 
+ #  ... for compiling on MINIX
+ CC = gcc
+-CFLAGS =  -I. -O2 -c
++CFLAGS =  -I. -O2 -c -std=gnu89
+ LDFLAGS = 
+ LIBS = 
+ 
+diff --git a/slb/slbanal.c b/slb/slbanal.c
+index bf45d4f..468e4cd 100644
+--- a/slb/slbanal.c
++++ b/slb/slbanal.c
+@@ -256,7 +256,6 @@ void    Flush_Data()
+ }
+ 
+ /*====================================================== START_DIRECTIVE */
+-PRIVATE
+ void    Start_Directive ()
+ /*      ~~~~~~~~~~~~~~~
+  *  The start of a directive has been encountered, so write out any
