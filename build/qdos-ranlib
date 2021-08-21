@@ -1,0 +1,19 @@
+#!/bin/sh                                                                       
+
+slb=/usr/local/qdos-gcc/bin/slb
+bdir=`pwd`
+libname="$1"
+
+mkdir /tmp/ranlib-tmp-$$
+mkdir /tmp/ranlib-tmp-$$/objects
+cp $libname /tmp/ranlib-tmp-$$/libxx-old.a
+cd /tmp/ranlib-tmp-$$/objects
+$slb -x ../libxx-old.a
+$slb -L ../mlist *.o
+tsort ../mlist >../slist 
+$slb -crvk -m ../slist ../libxx.a 
+cd $bdir
+cp -f /tmp/ranlib-tmp-$$/libxx.a $libname
+rm -rf /tmp/ranlib-tmp-$$
+
+exit 0
