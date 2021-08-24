@@ -19,6 +19,7 @@ if [ "$BUILD_USER" == "root" ]; then
 		build-essential \
 		bzip2 \
 		curl \
+		file \
 		less \
 		libbz2-dev \
 		make \
@@ -56,8 +57,8 @@ do
 done
 
 $USE_SUDO mv -v /usr/local/bin/qdos-ranlib /usr/local/bin/qdos-ranlib2
-$USE_SUDO cp -v ../../as /usr/local/qdos-gcc/bin/
-$USE_SUDO cp -v ../../qdos-ranlib /usr/local/qdos-gcc/bin/
+$USE_SUDO cp -v ../../scripts/as /usr/local/qdos-gcc/bin/
+$USE_SUDO cp -v ../../scripts/qdos-ranlib /usr/local/qdos-gcc/bin/
 $USE_SUDO cp -v ../../qdos-ranlib /usr/local/bin/
 $USE_SUDO mv -v /usr/local/qdos-gcc/bin/qld /usr/local/qdos-gcc/bin/ld
 
@@ -72,7 +73,7 @@ $USE_SUDO mkdir -p /usr/local/qdos-gcc/lib
 # install libc headers
 mkdir libc
 cd libc
-tar xvf ../libc-4.24.5.tar.bz2
+tar xf ../libc-4.24.5.tar.bz2
 cd libc-4.24.5
 patch -p1 < ../../libc.patch
 $USE_SUDO make install-includes
@@ -81,7 +82,7 @@ cd ..
 
 mkdir gcc
 cd gcc
-tar xvf ../gcc-core-2.95.3.tar.bz2
+tar xf ../gcc-core-2.95.3.tar.bz2
 cd gcc-2.95.3
 bzcat ../../gcc-2.95.3-bufixes.patch.bz2 | patch -p1
 patch -p1 <../../gcc-patches/0001-import-qdos-gcc-patch.patch
@@ -91,13 +92,30 @@ patch -p1 <../../gcc-patches/0003-texinfo-a-kludge-for-modern-gcc-and-strcpy-iss
 if [ "$TARGETARCH" != "" ]; then
 	case $TARGETARCH in
 		386)
-			HOSTTARGET=i386-linux;;
+			CFLAGS_MACH=""
+			HOSTTARGET=i386-pc-linux-gnu;;
 		arm)
+			CFLAGS_MACH=""
 			HOSTTARGET=armv7l-unknown-linux-gnu;;
+		amd64)
+			apt install -y gcc-multilib
+			CFLAGS_MACH="-fno-builtin"
+			HOSTTARGET=i386-pc-linux-gnu
+			patch -p1 <../../gcc-patches/0001-Makefile.in-m32-to-build-32bit-on-x86_64.patch;;
 	esac
-	CFLAGS="-std=gnu89" ./configure --target=qdos --host=$HOSTTARGET
+
+	CFLAGS="-std=gnu89 $CFLAGS_MACH" ./configure --target=qdos --host=$HOSTTARGET
 else
-	CFLAGS="-std=gnu89" ./configure --target=qdos
+	BUILD_ARCH=`arch`
+	CFLAGS_MACH=""
+	case $BUILD_ARCH in
+		x86_64)
+			CFLAGS_MACH="-fno-builtin"
+			HOSTTARGET="--host=i686-pc-linux-gnu"
+			patch -p1 <../../gcc-patches/0001-Makefile.in-m32-to-build-32bit-on-x86_64.patch;;
+	esac;
+
+	CFLAGS="-std=gnu89 $CFLAGS_MACH" ./configure --target=qdos $HOSTTARGET
 fi
 
 # hack so we don't need ancient bison

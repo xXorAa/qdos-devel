@@ -5,7 +5,7 @@ index 5909695..54f523b 100644
 @@ -1693,7 +1693,7 @@ void command_line(int   *xac, char  ***xav, char **paths, char *lib_arr)
         if(ldd == NULL)
         {
- #ifdef __unix__
+ #if defined(__unix__) || defined(__APPLE__)
 -           ldd = strdup("/usr/local/qdos/lib/");
 +           ldd = strdup("/usr/local/qdos-gcc/lib/");
  #else

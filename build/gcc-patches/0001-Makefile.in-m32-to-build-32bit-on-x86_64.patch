@@ -1,0 +1,75 @@
+From fc3c79116c5484bbbafd0d1a4fb2e3a055431094 Mon Sep 17 00:00:00 2001
+From: Graeme Gregory <graeme@xora.org.uk>
+Date: Mon, 23 Aug 2021 20:51:21 +0100
+Subject: [PATCH] Makefile.in : -mbe32 to build 32bit on arm64
+
+Plus some other fixes needed.
+
+Signed-off-by: Graeme Gregory <graeme@xora.org.uk>
+---
+ Makefile.in     | 7 ++++---
+ gcc/Makefile.in | 2 +-
+ gcc/protoize.c  | 1 +
+ 3 files changed, 6 insertions(+), 4 deletions(-)
+
+diff --git a/Makefile.in b/Makefile.in
+index 7af1784..c1ec479 100644
+--- a/Makefile.in
++++ b/Makefile.in
+@@ -84,16 +84,17 @@ HOST_PREFIX_1 = loser-
+ 
+ # These flag values are normally overridden by the configure script.
+ CFLAGS = -g
++CFLAGS_FOR_HOST = $(CFLAGS) -m32
+ CXXFLAGS = -g -O2
+ 
+-LIBCFLAGS = $(CFLAGS)
++LIBCFLAGS = $(CFLAGS_FOR_HOST)
+ CFLAGS_FOR_TARGET = $(CFLAGS)
+ LDFLAGS_FOR_TARGET = 
+ LIBCFLAGS_FOR_TARGET = $(CFLAGS_FOR_TARGET)
+ PICFLAG = 
+ PICFLAG_FOR_TARGET = 
+ 
+-CHILLFLAGS = $(CFLAGS)
++CHILLFLAGS = $(CFLAGS_FOR_HOST)
+ CHILL_LIB = -lchill
+ CXX = c++
+ 
+@@ -366,7 +367,7 @@ BASE_FLAGS_TO_PASS = \
+ 	"BISON=$(BISON)" \
+ 	"CC_FOR_BUILD=$(CC_FOR_BUILD)" \
+ 	"CC_FOR_TARGET=$(CC_FOR_TARGET)" \
+-	"CFLAGS=$(CFLAGS)" \
++	"CFLAGS=$(CFLAGS_FOR_HOST)" \
+ 	"CFLAGS_FOR_TARGET=$(CFLAGS_FOR_TARGET)" \
+ 	"CHILLFLAGS=$(CHILLFLAGS)" \
+ 	"CHILL_FOR_TARGET=$(CHILL_FOR_TARGET)" \
+diff --git a/gcc/Makefile.in b/gcc/Makefile.in
+index 85bf9f8..fcdc6b4 100644
+--- a/gcc/Makefile.in
++++ b/gcc/Makefile.in
+@@ -173,7 +173,7 @@ GCC_FOR_TARGET = ./xgcc -B$(build_tooldir)/bin/ -B./ -I$(build_tooldir)/include
+ # This is used instead of ALL_CFLAGS when compiling with GCC_FOR_TARGET.
+ # It omits XCFLAGS, and specifies -B./.
+ # It also specifies -I./include to find, e.g., stddef.h.
+-GCC_CFLAGS=$(INTERNAL_CFLAGS) $(X_CFLAGS) $(T_CFLAGS) $(CFLAGS) -I./include $(TCFLAGS)
++GCC_CFLAGS=$(INTERNAL_CFLAGS) $(X_CFLAGS) $(T_CFLAGS) $(CFLAGS_FOR_TARGET) -I./include $(TCFLAGS)
+ 
+ # Sed command to transform gcc to installed name.  Overwritten by configure.
+ program_transform_name = @program_transform_name@
+diff --git a/gcc/protoize.c b/gcc/protoize.c
+index 7e9205c..3103a0e 100644
+--- a/gcc/protoize.c
++++ b/gcc/protoize.c
+@@ -125,6 +125,7 @@ typedef const PTR const_pointer_type;
+ #if defined(POSIX)
+ 
+ #include <signal.h>
++#include <alloca.h>
+ 
+ #else /* !defined(POSIX) */
+ 
+-- 
+2.30.2
+
