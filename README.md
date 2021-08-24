@@ -18,7 +18,7 @@ on an i386 machine if you have an older version of docker
 If you have a docker that support buildx multi platform, you can build
 multiple platforms at once as a cross compile.
 
-    docker buildx build --tag <user>/<label>:<version> --platform linux/386,linux/arm/v7 --push .
+    docker buildx build --tag <user>/<label>:<version> --platform linux/amd64,linux/386,linux/arm/v7 --push .
 
 Obviously you can fill in your own details above, or remove the --push if you
 don't want to push to docker hub.
