@@ -18,7 +18,7 @@ on an x86_64/x86_32 machine if you have an older version of docker
 If you have a docker that support buildx multi platform, you can build
 multiple platforms at once as a cross compile.
 
-    docker buildx build --tag <user>/<label>:<version> --platform linux/amd64,linux/386,linux/arm/v7 --push .
+    docker buildx build --tag <user>/<label>:<version> --platform linux/amd64,linux/386,linux/arm/v7 --load .
 
 Obviously you can fill in your own details above, or remove the --push if you
 don't want to push to docker hub.
@@ -31,7 +31,7 @@ For example using the docker image to build the wander game for qdos
     cd wander
     git checkout qdos-port
     cd ..
-    docker run -v `pwd`/wander:qdos/wander -it qdos-devel:latest bash
+    docker run -v `pwd`/wander:qdos/wander -it <user>/<label> bash
 
 You should now be in the container in the directory /qdos/
 
@@ -40,4 +40,19 @@ You should now be in the container in the directory /qdos/
     make deploy
 
 This should make a Wander.zip which can be used in an emulator.
+
+### qdos-gcc note
+
+According to the documents C produced object files are not compatible
+between c68 and gcc. So this container seperates the libs into different
+directories. This means gcc is missing some libraries that c68 has.
+
+You can cheat and use
+
+```
+-L/usr/local/share/qdos/lib
+```
+
+in the link instruction line to use c68 libs, but you are on your own
+with compatibility.
 
