@@ -52,6 +52,8 @@ RUN <<EOF
 
     rm -r build
 
+    # Patch for gcc and install again
+    patch -p1 <../../0001-ldold-hack-to-not-use-xtc68-install-inside-gcc-build.patch
     meson build --prefix=/usr/local/qdos-gcc --strip
     ninja install -C build
 
