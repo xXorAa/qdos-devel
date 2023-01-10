@@ -1,0 +1,39 @@
+From 9eaaaa277a16743e85f5e13eb0d0d798ddb164f6 Mon Sep 17 00:00:00 2001
+From: Graeme Gregory <graeme@xora.org.uk>
+Date: Mon, 9 Jan 2023 22:35:00 +0000
+Subject: [PATCH] include/netinet/tcp.h : fix bitfield definitions
+
+BYTE_ORDER and LITTLE/BIG_ENDIAN seem to be never defined in compiler,
+so as we are compiling for 68k assume big endian.
+
+Also bitfields are of type int.
+
+Signed-off-by: Graeme Gregory <graeme@xora.org.uk>
+---
+ include/netinet/tcp.h | 10 ++--------
+ 1 file changed, 2 insertions(+), 8 deletions(-)
+
+diff --git a/include/netinet/tcp.h b/include/netinet/tcp.h
+index 089e9f0..1a45c0a 100644
+--- a/include/netinet/tcp.h
++++ b/include/netinet/tcp.h
+@@ -7,14 +7,8 @@ u_short th_sport;
+ u_short th_dport;
+ tcp_seq th_seq;
+ tcp_seq th_ack;
+-#if BYTE_ORDER == LITTLE_ENDIAN
+-u_char th_x2:4;
+-u_char th_off:4;
+-#endif
+-#if BYTE_ORDER == BIG_ENDIAN
+-u_char th_off:4;
+-u_char th_x2:4;
+-#endif
++int th_off:4;
++int th_x2:4;
+ u_char th_flags;
+ #define TH_FIN 0x01
+ #define TH_SYN 0x02
+-- 
+2.37.1 (Apple Git-137.1)
+
