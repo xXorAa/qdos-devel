@@ -11,9 +11,9 @@ be carried out in the container.
 
 ## Building
 
-on an i386 machine if you have an older version of docker
+on an x86_64/x86_32 machine if you have an older version of docker
 
-    docker build . -t qdos-devel:latest
+    DOCKER_BUILDKIT=1 docker build -t <user>/<label> .
 
 If you have a docker that support buildx multi platform, you can build
 multiple platforms at once as a cross compile.
