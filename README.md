@@ -31,7 +31,7 @@ For example using the docker image to build the wander game for qdos
     cd wander
     git checkout qdos-port
     cd ..
-    docker run -v `pwd`/wander:qdos/wander -it <user>/<label> bash
+    docker run -e LOCAL_USER_ID=`id -u $USER` -v `pwd`/wander/:/home/user/wander/ -it xora/qdos-devel bash
 
 You should now be in the container in the directory /qdos/
 
