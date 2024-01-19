@@ -1,6 +1,6 @@
-# syntax=docker/dockerfile:1.3-labs
+# syntax=docker/dockerfile:1.6
 
-FROM debian:10.10
+FROM debian:12.4
 ARG TARGETARCH
 
 WORKDIR build
@@ -10,30 +10,43 @@ COPY build .
 RUN <<EOF
     set -e
 
-	apt-get update
-	apt-get install -y \
-		adduser \
-		autoconf \
-		build-essential \
-		bzip2 \
-		curl \
-		file \
-		flex \
-		gawk \
-		git-core \
-		less \
-		libbz2-dev \
-		make \
+    apt-get update
+    apt-get install -y \
+        adduser \
+        autoconf \
+        build-essential \
+        bzip2 \
+        ca-certificates \
+        curl \
+        file \
+        flex \
+        gawk \
+        git-core \
+        gnupg \
+        less \
+        libbz2-dev \
+        make \
         meson \
-		nano \
-		unzip \
-		vim
+        nano \
+        sed \
+        unzip \
+        vim
 
-	# switch to bash as default shell otherwise we have issues later
-	echo "dash dash/sh boolean false" | debconf-set-selections
-	DEBIAN_FRONTEND=noninteractive dpkg-reconfigure dash
+    # switch to bash as default shell otherwise we have issues later
+    echo "dash dash/sh boolean false" | debconf-set-selections
+    DEBIAN_FRONTEND=noninteractive dpkg-reconfigure dash
 EOF
 
+RUN <<EOF
+    curl -fsSL "https://keys.openpgp.org/vks/v1/by-fingerprint/B42F6819007F00F88E364FD4036A9C25BF357DD4" | gpg --import
+    curl -o /usr/local/bin/gosu -SL "https://github.com/tianon/gosu/releases/download/1.17/gosu-$(dpkg --print-architecture)"
+    curl -o /usr/local/bin/gosu.asc -SL "https://github.com/tianon/gosu/releases/download/1.17/gosu-$(dpkg --print-architecture).asc"
+    gpg --verify /usr/local/bin/gosu.asc
+    rm /usr/local/bin/gosu.asc
+    chmod +x /usr/local/bin/gosu
+EOF
+
+# build base xtc68
 RUN <<EOF
     set -e
 
@@ -51,11 +64,20 @@ RUN <<EOF
     bash ./sdk-install.sh
 
     rm -r build
+EOF
+
+# build modified xtc68 for qdos-gcc
+RUN <<EOF
+    set -e
+
+    cd xtc68/xtc68
 
     # Patch for gcc and install again
     patch -p1 <../../0001-ldold-hack-to-not-use-xtc68-install-inside-gcc-build.patch
     meson build --prefix=/usr/local/qdos-gcc --strip
     ninja install -C build
+
+    rm -r build
 
     mv -v /usr/local/qdos-gcc/bin/qdos-ranlib /usr/local/qdos-gcc/bin/qdos-ranlib2
     cp -v ../../scripts/as /usr/local/qdos-gcc/bin/
@@ -65,6 +87,11 @@ RUN <<EOF
     cd ..
     cd ..
     rm -r xtc68
+EOF
+
+# Now start gcc compile
+RUN <<EOF
+    set -e
 
     # create qdos-gcc directories
     mkdir -p /usr/local/qdos-gcc/include
@@ -93,21 +120,21 @@ RUN <<EOF
     echo "TARGETARCH: $TARGETARCH"
 
     if [ "$TARGETARCH" != "" ]; then
-	    case $TARGETARCH in
-		    386)
-			    CFLAGS_MACH=""
-			    HOSTTARGET=i386-pc-linux-gnu;;
-		    arm)
-			    CFLAGS_MACH=""
-			    HOSTTARGET=armv7l-unknown-linux-gnu;;
-		    amd64)
-			    apt install -y gcc-multilib
-			    CFLAGS_MACH="-fno-builtin"
-			    HOSTTARGET=i686-pc-linux-gnu
-			    patch -p1 <../../gcc-patches/0001-Makefile.in-m32-to-build-32bit-on-x86_64.patch;;
-	    esac
+        case $TARGETARCH in
+            386)
+                CFLAGS_MACH=""
+                HOSTTARGET=i386-pc-linux-gnu;;
+            arm)
+                CFLAGS_MACH=""
+                HOSTTARGET=armv7l-unknown-linux-gnu;;
+            amd64)
+                apt install -y gcc-multilib
+                CFLAGS_MACH="-fno-builtin"
+                HOSTTARGET=i686-pc-linux-gnu
+                patch -p1 <../../gcc-patches/0001-Makefile.in-m32-to-build-32bit-on-x86_64.patch;;
+        esac
 
-	    CFLAGS="-std=gnu89 $CFLAGS_MACH" ./configure --target=qdos --build=$HOSTTARGET --host=$HOSTTARGET
+        CFLAGS="-std=gnu89 $CFLAGS_MACH" ./configure --target=qdos --build=$HOSTTARGET --host=$HOSTTARGET
     fi
 
     # hack so we don't need ancient bison
@@ -132,8 +159,11 @@ RUN <<EOF
     cd ..
     cd ..
     rm -r libc
+EOF
 
-    # qlzip so we can create zip files with QDOS headers
+# qlzip so we can create zip files with QDOS headers
+RUN <<EOF
+    set -e
 
     mkdir qlzip
     cd qlzip
@@ -145,8 +175,12 @@ RUN <<EOF
     cd ..
     cd ..
     rm -rf qlzip
+EOF
 
-    # qltools so we can create disk images
+# qltools so we can create disk images
+RUN <<EOF
+    set -e
+
     mkdir qltools
     cd qltools
     git clone https://github.com/SinclairQL/qltools
@@ -158,11 +192,11 @@ RUN <<EOF
     cd ..
     cd ..
     rm -rf qltools
-
 EOF
 
-RUN yes | adduser --home /qdos --shell /bin/bash --disabled-password qdos
+WORKDIR /home/user/
 
-USER qdos:qdos
-WORKDIR /qdos
+COPY entrypoint.sh /usr/local/bin/entrypoint.sh
+RUN chmod +x /usr/local/bin/entrypoint.sh
+ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
 
