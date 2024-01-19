@@ -1,4 +1,4 @@
-#!/bin/sh 
+#!/bin/bash 
 
 as68="/usr/local/qdos-gcc/bin/as68"
 # you may use a specific cpp version. E.g.:
